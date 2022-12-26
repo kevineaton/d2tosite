@@ -115,16 +115,26 @@ Currently, the main template variables that are supported are:
 
 ## Search
 
-In progress
+Search is a local index of pages keyed by their path with the content, title, tags, and summary indexed. It is then parsed through `lunr.js`. If the query param of `search` is present, the search content is displayed. Note that this is purely client-side and driven in the `leaf.html` template, so if you provide your own template, you will need to ensure you either support search as laid out or remove it from your site.
 
 ## Roadmap
 
+These are not in any specific order. If you are interested in working on, send a message or open an issue.
+
 [ ] Add "Site Title" command option to provide a site title across pages
-[ ] Add Search Template
+
+[ ] Add Search Template instead of string output from JS
+
 [ ] GitHub actions to build binaries
+
 [ ] Better default templates
+
 [ ] Better pages for tags (right now they are just string print outs)
+
 [ ] Dockerize the binaries for easier use
+
 [ ] Expose more D2 functionality
+
 [ ] Code cleanup to move beyond POC
+
 [ ] UI testing for HTML generation
