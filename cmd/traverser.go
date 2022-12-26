@@ -134,7 +134,7 @@ func buildTagPages(options *CommandOptions) error {
 		sb.WriteString("</ul>")
 		html := sb.String()
 		temp := d2s.LeafData{
-			Title:    "",
+			Title:    tag,
 			Content:  template.HTML(html),
 			Links:    site.Links,
 			SiteTags: site.SiteTags,
@@ -148,6 +148,45 @@ func buildTagPages(options *CommandOptions) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func buildSearchPage(options *CommandOptions) error {
+	leafTemplate := template.Must(template.ParseFiles(options.LeafTemplate))
+	content := `
+		<script>
+			function getQuery(queryTerm) {
+				var query = window.location.search.substring(1);
+				var vars = query.split("&");
+				for(var i = 0; i < vars.length; i++){
+					var pair = vars[i].split("=");
+					if(pair[0] === queryTerm){
+						return decodeURIComponent(pair[1].replace(/\+/g, "20"));
+					}
+				}
+			}
+			var search = getQuery("search");
+			console.log(search);
+			var results = index.search(search);
+			console.log(results);
+		</script>
+	`
+	content = ""
+	temp := d2s.LeafData{
+		Title:    "Search Results",
+		Content:  template.HTML(content),
+		Links:    site.Links,
+		SiteTags: site.SiteTags,
+	}
+	output, err := os.Create(options.OutputDirectory + "/search.html")
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+	err = leafTemplate.Execute(output, temp)
+	if err != nil {
+		return err
 	}
 	return nil
 }
