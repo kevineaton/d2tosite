@@ -37,6 +37,7 @@ type LeafData struct {
 	SiteTags map[string][]LeafData // needed for the nav
 	Links    []LeafData            // needed for the nav
 	Content  template.HTML         // used for converting to an html template
+	Summary  string                // used for search displays, found in the meta
 }
 
 // ParseMD takes a series of bytes, such as from a file, and parses the MD into HTML, with meta data set
@@ -74,6 +75,17 @@ func ParseMD(content []byte, prefix string) (*LeafData, error) {
 		}
 	}
 
+	summary := ""
+	if t, tOK := meta["summary"]; tOK {
+		if converted, cOK := t.(string); cOK {
+			summary = converted
+		}
+	}
+
+	if summary == "" {
+		summary = fmt.Sprintf("%s's content and information", title)
+	}
+
 	// replace images
 	output = imageReplaceRegex.ReplaceAll(output, []byte(fmt.Sprintf("<img src='%s$1.svg' alt='diagram' />", prefix)))
 
@@ -90,6 +102,7 @@ func ParseMD(content []byte, prefix string) (*LeafData, error) {
 	data.Content = template.HTML(output)
 	data.Title = title
 	data.Tags = tags
+	data.Summary = summary
 	return data, nil
 }
 

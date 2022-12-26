@@ -87,6 +87,10 @@ func execute(options *CommandOptions) error {
 		return err
 	}
 	err = buildTagPages(options)
+	if err != nil {
+		return err
+	}
+	err = buildSearchPage(options)
 	return err
 }
 
