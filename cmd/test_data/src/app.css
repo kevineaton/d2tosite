@@ -1,0 +1,16 @@
+
+.diagram-svg {
+  width: 100%;
+}
+
+.left-nav-container {
+  margin-bottom: 10px;
+}
+
+.left-nav-header {
+  font-weight: bold;
+}
+
+.left-nav-link {
+  padding-left: 5px;
+}

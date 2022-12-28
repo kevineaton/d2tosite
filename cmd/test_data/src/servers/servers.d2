@@ -1,0 +1,15 @@
+Microservice Architecture {
+  client: Client; api: Gateway; users: Users Service; devices: Devices Service; media: Media Service; db: Database;
+
+  db.shape: cylinder
+  api.shape: cloud
+
+  client -> api
+  api -> users
+  api -> devices
+  api -> media
+
+  users -> db
+  devices -> db
+  media -> db
+}

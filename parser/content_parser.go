@@ -20,7 +20,7 @@ import (
 
 // these regexes are used to check for data within the markdown
 var imageReplaceRegex = regexp.MustCompile(`{{(\w+)}}`)
-var titleRegex = regexp.MustCompile(`<h1>(\w+)</h1>`)
+var titleRegex = regexp.MustCompile(`<h1>(\w+,\s*)</h1>`)
 
 // ParseOptions are options relevants specifically to parsing, usually
 // filled in automatically from the CommandOptions if run from the binary
@@ -36,6 +36,7 @@ type LeafData struct {
 	Tags     []string
 	SiteTags map[string][]LeafData // needed for the nav
 	Links    []LeafData            // needed for the nav
+	Diagrams []string              // needed for the index
 	Content  template.HTML         // used for converting to an html template
 	Summary  string                // used for search displays, found in the meta
 }
@@ -87,9 +88,18 @@ func ParseMD(content []byte, prefix string) (*LeafData, error) {
 	}
 
 	// replace images
-	output = imageReplaceRegex.ReplaceAll(output, []byte(fmt.Sprintf("<img src='%s$1.svg' alt='diagram' />", prefix)))
+	matches := imageReplaceRegex.FindAll(output, -1)
+	for i := range matches {
+		diagram := strings.ReplaceAll(string(matches[i]), "{{", prefix)
+		diagram = strings.ReplaceAll(diagram, "}}", ".svg")
+		data.Diagrams = append(data.Diagrams, diagram)
+	}
+	output = imageReplaceRegex.ReplaceAll(output, []byte(fmt.Sprintf("<img src='%s$1.svg' class='diagram-svg' alt='diagram' />", prefix)))
 
-	// if meta didn't provide a title, try the first <h1>
+	// we want to make sure our pages are generally correct, so we need to split here
+	// first, if there's no title, we need to see if it's in the markdown by default
+	// then, if the title WAS provided, we want to add it to the top of the content IF
+	// there isn't one already
 	if title == "" {
 		titleBytes := titleRegex.Find(output)
 		if len(titleBytes) > 0 {
@@ -97,6 +107,13 @@ func ParseMD(content []byte, prefix string) (*LeafData, error) {
 			title = strings.Replace(title, "</h1>", "", -1)
 		}
 		// if it's still blank, it's unknown, and the caller can handle that
+	} else {
+		// title is known, we need to see if we need to add it; since this is pretty
+		// straight forward, we only need to see if the <h1> tag exists. If it does,
+		// we can assume that the title is in the content so don't worry about adding it
+		if !strings.Contains(string(output), "<h1>") {
+			output = append([]byte(fmt.Sprintf("<h1>%s</h1>\n", title)), output...)
+		}
 	}
 
 	data.Content = template.HTML(output)

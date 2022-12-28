@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>{{.Title}}</title>
+    <title>index</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
     <link href="/app.css" rel="stylesheet">
     <script src="https://unpkg.com/lunr/lunr.js"></script>
@@ -26,16 +26,26 @@
         <div class="col-2">
           <div class="left-nav-container">
             <span class="left-nav-header">Pages</span><br />
-            {{range .Links}}
-              <a href="{{.FileName}}" class="left-nav-link">{{.Title}}</a><br />
-            {{end}}
+            
+              <a href="/index.html" class="left-nav-link">Home</a><br />
+            
+              <a href="/level1_topic1/index.html" class="left-nav-link">Level 1</a><br />
+            
+              <a href="/level1_topic1/level2_topic1/index.html" class="left-nav-link">index</a><br />
+            
+              <a href="/level1_topic2/l1t2.html" class="left-nav-link">Level 1 Topic 2</a><br />
+            
+              <a href="/level1_topic2/level2_topic2/index.html" class="left-nav-link">index</a><br />
+            
           </div>
 
           <div class="left-nav-container">
             <span class="left-nav-header">Tags</span><br />
-            {{ range $key, $v := .SiteTags }}
-              <a href="/tags/{{$key}}" class="left-nav-link">{{$key}}</a><br />
-            {{end}}
+            
+              <a href="/tags/tag1" class="left-nav-link">tag1</a><br />
+            
+              <a href="/tags/tag2" class="left-nav-link">tag2</a><br />
+            
           </div>
 
           <div class="left-nav-container">
@@ -56,28 +66,30 @@
           <div class="row">
             <div class="col-12">
               <div id="content">
-                {{.Content}}
+                <h1>Subfolder</h1>
+<p>Hello!</p>
+
               </div>
             </div>
           </div>
-          {{if .Tags}}
+          
             <div class="row">
               <div class="col-12">
                 Tags: 
-                {{range .Tags}}
-                  <a href="/tags/{{.}}">{{.}}</a>
-                {{end}}
+                
+                  <a href="/tags/tag1">tag1</a>
+                
               </div>
             </div>
-          {{end}}
+          
         </div>
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
   
     <script>
-      // build the search documents  
-      // we only want to do this if there is a search param      
+      
+      
 
 			function getQuery(queryTerm) {
 				var query = window.location.search.substring(1);
@@ -92,17 +104,49 @@
 
 			var search = getQuery("search");
       if(search && search !== ""){
-        // searchPages will help with look ups of results
+        
         var searchPages = {
-          {{range .Links}}
-            "{{.FileName}}" : {
-              "id": "{{.FileName}}",
-              "title": "{{.Title}}",
-              "tags": {{.Tags}},
-              "content": "{{.Content}}",
-              "summary": "{{.Summary}}",
+          
+            "\/index.html" : {
+              "id": "\/index.html",
+              "title": "Home",
+              "tags": [],
+              "content": "\u003ch1\u003eD2ToSite Demo Site\u003c\/h1\u003e\n\u003cp\u003eThis is a demonstration site designed to show the d2tosite output. All of the data for this site can be found in the \u003ccode\u003e\/cmd\/test_data\/src\u003c\/code\u003e directory of the repository.\u003c\/p\u003e\n\u003cp\u003eFor more information, refer to the \u003ca href=\u0022https:\/\/github.com\/kevineaton\/d2tosite\u0022\u003eGitHub\u003c\/a\u003e repository.\u003c\/p\u003e\n\u003cp\u003e\u003cimg src=\u0027\/d2flow.svg\u0027 class=\u0027diagram-svg\u0027 alt=\u0027diagram\u0027 \/\u003e\u003c\/p\u003e\n",
+              "summary": "Home\u0027s content and information",
             },
-          {{end}}
+          
+            "\/level1_topic1\/index.html" : {
+              "id": "\/level1_topic1\/index.html",
+              "title": "Level 1",
+              "tags": ["tag1","tag2"],
+              "content": "\u003ch1\u003eLevel 1\u003c\/h1\u003e\n\u003cp\u003e\u003cimg src=\u0027\/level1_topic1\/sample.svg\u0027 class=\u0027diagram-svg\u0027 alt=\u0027diagram\u0027 \/\u003e\u003c\/p\u003e\n",
+              "summary": "A brief overview for testing the output of the content.",
+            },
+          
+            "\/level1_topic1\/level2_topic1\/index.html" : {
+              "id": "\/level1_topic1\/level2_topic1\/index.html",
+              "title": "index",
+              "tags": [],
+              "content": "\u003cp\u003eNo title available\u003c\/p\u003e\n",
+              "summary": "\u0027s content and information",
+            },
+          
+            "\/level1_topic2\/l1t2.html" : {
+              "id": "\/level1_topic2\/l1t2.html",
+              "title": "Level 1 Topic 2",
+              "tags": [],
+              "content": "\u003ch1\u003eLevel 1 Topic 2\u003c\/h1\u003e\n\u003cp\u003eContinuing...\u003c\/p\u003e\n",
+              "summary": "Level 1 Topic 2\u0027s content and information",
+            },
+          
+            "\/level1_topic2\/level2_topic2\/index.html" : {
+              "id": "\/level1_topic2\/level2_topic2\/index.html",
+              "title": "index",
+              "tags": ["tag1"],
+              "content": "\u003ch1\u003eSubfolder\u003c\/h1\u003e\n\u003cp\u003eHello!\u003c\/p\u003e\n",
+              "summary": "\u0027s content and information",
+            },
+          
         };
 
         var index = lunr(function () {

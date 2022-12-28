@@ -72,7 +72,6 @@ GLOBAL OPTIONS:
    --d2-output-type value    the output type for the d2 compiler; can only be svg at this time and is otherwise ignored (default: "svg")
    --input-directory value   the directory to read from and walk to build the site (default: "./src")
    --output-directory value  the output directory to publish the site to (default: "./build")
-   --index-template value    the template to use for the index; if not provided it will use the included default (default: "./default_templates/index.html")
    --leaf-template value     the template to use for each leaf; if not provided it will use the included default (default: "./default_templates/leaf.html")
    --help, -h                show help
 ```
@@ -127,9 +126,9 @@ These are not in any specific order. If you are interested in working on, send a
 
 [ ] GitHub actions to build binaries
 
-[ ] Better default templates
+[X] Better default templates
 
-[ ] Better pages for tags (right now they are just string print outs)
+[ ] Add Tag template for the tags
 
 [ ] Dockerize the binaries for easier use
 
@@ -138,3 +137,15 @@ These are not in any specific order. If you are interested in working on, send a
 [ ] Code cleanup to move beyond POC
 
 [ ] UI testing for HTML generation
+
+[X] Add warnings on compilations that have errors
+
+[X] Add diagram list index
+
+[ ] Add Diagram Index template
+
+[ ] Logging and verbosity
+
+[ ] Add option to continue on errors from traversing
+
+[ ] Add option to clear out target directory on build

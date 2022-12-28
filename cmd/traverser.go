@@ -22,27 +22,50 @@ type CommandOptions struct {
 
 // SiteData is the main store of the site data
 type SiteData struct {
-	Title    string
-	Content  template.HTML
-	Links    []d2s.LeafData
-	Tags     []string
-	SiteTags map[string][]d2s.LeafData
+	Title       string
+	Content     template.HTML
+	Links       []d2s.LeafData
+	Tags        []string
+	SiteTags    map[string][]d2s.LeafData
+	AllDiagrams map[string]*d2s.LeafData
 }
 
-var site = &SiteData{}
+var site *SiteData
+
+func setupSite() {
+	site = &SiteData{}
+	site.Title = ""
+	site.Content = ""
+	site.Links = []d2s.LeafData{}
+	site.Tags = []string{}
+	site.SiteTags = map[string][]d2s.LeafData{}
+	site.AllDiagrams = map[string]*d2s.LeafData{}
+}
+
+var traverseErrors = []error{}
 
 // walkInputDirectory walks the input directory to generate the desired site
 func walkInputDirectory(options *CommandOptions) error {
+	if site == nil {
+		setupSite()
+	}
 	inputPath := options.InputDirectory
 	outputPath := options.OutputDirectory
 	parseOptions := &d2s.ParseOptions{
 		D2Theme:      options.D2Theme,
 		D2OutputType: options.D2OutputType,
 	}
-	site.SiteTags = map[string][]d2s.LeafData{}
 
 	fsys := os.DirFS(inputPath)
+	// first, make sure the output directory is created
+	err := os.MkdirAll(options.OutputDirectory, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	fs.WalkDir(fsys, ".", func(path string, d os.DirEntry, walkErr error) error {
+
+		// errors are handled a bit differently here; since we want to continue traversing,
+		// we will compile all errors into the slice of errors and report on them after
 
 		if path == "." {
 			// we don't need this, so we skip
@@ -53,7 +76,10 @@ func walkInputDirectory(options *CommandOptions) error {
 		if d.IsDir() {
 			output := filepath.Join(outputPath, path)
 			err := os.MkdirAll(output, os.ModePerm)
-			return err
+			if err != nil {
+				traverseErrors = append(traverseErrors, fmt.Errorf("%s: %+v", output, err))
+			}
+			return nil
 		}
 
 		// it's a file, so let's set up the correct targets
@@ -66,29 +92,30 @@ func walkInputDirectory(options *CommandOptions) error {
 			outputFile = strings.TrimSuffix(outputFile, filepath.Ext(path))
 			outputFile += "." + options.D2OutputType
 			err := handleD2(inputFile, outputFile, parseOptions)
-			return err
+			if err != nil {
+				traverseErrors = append(traverseErrors, fmt.Errorf("%s: %+v", outputFile, err))
+			}
+			return nil
 		case ".md":
 			// if it's markdown, process it and prepare it for conversion
 			prefix := string(os.PathSeparator) + strings.TrimRight(path, filepath.Base(path))
 			leaf, err := handleMD(inputFile, prefix)
 			if err != nil {
-				return err
+				traverseErrors = append(traverseErrors, fmt.Errorf("%s: %+v", outputFile, err))
 			}
 			site.Links = append(site.Links, *leaf)
 			for _, tag := range leaf.Tags {
 				site.SiteTags[tag] = append(site.SiteTags[tag], *leaf)
 			}
 
-			// special case: if this is the root index.md, we update the site itself as well
-			if path == "index.md" {
-				site.Title = leaf.Title
-				site.Content = leaf.Content
+			for _, diagram := range leaf.Diagrams {
+				site.AllDiagrams[diagram] = leaf
 			}
 		default:
 			// we just want to copy the file
 			err := handleOther(inputFile, outputFile)
 			if err != nil {
-				return err
+				traverseErrors = append(traverseErrors, fmt.Errorf("%s: %+v", outputFile, err))
 			}
 		}
 
@@ -117,7 +144,21 @@ func processTemplates(options *CommandOptions) error {
 			return err
 		}
 	}
-	return nil
+	// now build a default Search page
+	output, err := os.Create(options.OutputDirectory + "/search.html")
+	if err != nil {
+		fmt.Printf("\nHere: %+v\n", err)
+		return err
+	}
+	defer output.Close()
+	searchPage := &d2s.LeafData{
+		Title:    "Search",
+		Content:  "<h1>Search Results</h1>",
+		Links:    site.Links,
+		SiteTags: site.SiteTags,
+	}
+	err = leafTemplate.Execute(output, searchPage)
+	return err
 }
 
 func buildTagPages(options *CommandOptions) error {
@@ -152,34 +193,49 @@ func buildTagPages(options *CommandOptions) error {
 	return nil
 }
 
-func buildSearchPage(options *CommandOptions) error {
+func buildIndexPage(options *CommandOptions) error {
 	leafTemplate := template.Must(template.ParseFiles(options.LeafTemplate))
-	content := `
-		<script>
-			function getQuery(queryTerm) {
-				var query = window.location.search.substring(1);
-				var vars = query.split("&");
-				for(var i = 0; i < vars.length; i++){
-					var pair = vars[i].split("=");
-					if(pair[0] === queryTerm){
-						return decodeURIComponent(pair[1].replace(/\+/g, "20"));
-					}
-				}
-			}
-			var search = getQuery("search");
-			console.log(search);
-			var results = index.search(search);
-			console.log(results);
-		</script>
-	`
-	content = ""
+	sb := strings.Builder{}
+	sb.WriteString("<h1>Diagram Index</h1>")
+	if len(site.AllDiagrams) == 0 {
+		sb.WriteString("<p>No diagrams produced</p>")
+	}
+	for diagram, leaf := range site.AllDiagrams {
+		sb.WriteString(fmt.Sprintf(`
+			<div class="diagram-index-container">
+				<div class="row">
+					<div class="col-3">
+					<a href="%s" target="_%s" class="diagram-index-link diagram-index-link-title">%s</a>
+					</div>
+					<div class="col-7">
+						<a href="%s" target="_%s" class="diagram-index-link diagram-index-link-path">%s</a>
+					</div>
+					<div class="col-2">
+					</div>
+				</div>
+				<div class="row">
+					<div class="col-10 offset-1">
+						<strong>Summary</strong><br />
+						%s
+					</div>
+				</div>
+			</div>`,
+			diagram,
+			diagram,
+			leaf.Title,
+			diagram,
+			diagram,
+			diagram,
+			leaf.Summary))
+	}
+	html := sb.String()
 	temp := d2s.LeafData{
-		Title:    "Search Results",
-		Content:  template.HTML(content),
+		Title:    "Index",
+		Content:  template.HTML(html),
 		Links:    site.Links,
 		SiteTags: site.SiteTags,
 	}
-	output, err := os.Create(options.OutputDirectory + "/search.html")
+	output, err := os.Create(options.OutputDirectory + "/diagram_index.html")
 	if err != nil {
 		return err
 	}
