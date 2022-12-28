@@ -35,7 +35,7 @@ func TestProcessMarkdown(t *testing.T) {
 		{
 			Input:               []byte("# Header\n\n{{sample}}"),
 			Prefix:              "",
-			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='sample.svg' alt='diagram' /></p>\n",
+			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='sample.svg' class='diagram-svg' alt='diagram' /></p>\n",
 			ExpectedTitle:       "Header",
 			ExpectedTags:        []string{},
 			ExpectAnError:       false,
@@ -43,7 +43,7 @@ func TestProcessMarkdown(t *testing.T) {
 		{
 			Input:               []byte("# Header\n\n{{sample}}"),
 			Prefix:              "/",
-			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/sample.svg' alt='diagram' /></p>\n",
+			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/sample.svg' class='diagram-svg' alt='diagram' /></p>\n",
 			ExpectedTitle:       "Header",
 			ExpectedTags:        []string{},
 			ExpectAnError:       false,
@@ -51,7 +51,7 @@ func TestProcessMarkdown(t *testing.T) {
 		{
 			Input:               []byte("# Header\n\n{{sample}}"),
 			Prefix:              "test",
-			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='testsample.svg' alt='diagram' /></p>\n",
+			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='testsample.svg' class='diagram-svg' alt='diagram' /></p>\n",
 			ExpectedTitle:       "Header",
 			ExpectedTags:        []string{},
 			ExpectAnError:       false,
@@ -59,7 +59,7 @@ func TestProcessMarkdown(t *testing.T) {
 		{
 			Input:               []byte("# Header\n\n{{sample}}"),
 			Prefix:              "/test/2/",
-			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/test/2/sample.svg' alt='diagram' /></p>\n",
+			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/test/2/sample.svg' class='diagram-svg' alt='diagram' /></p>\n",
 			ExpectedTitle:       "Header",
 			ExpectedTags:        []string{},
 			ExpectAnError:       false,
@@ -67,7 +67,7 @@ func TestProcessMarkdown(t *testing.T) {
 		{
 			Input:               []byte("---\ntitle: Meta!\ntags:\n  - one\n  - two\n---\n# Header\n\n{{sample}}"),
 			Prefix:              "/test/2/",
-			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/test/2/sample.svg' alt='diagram' /></p>\n",
+			ExpectedHTMLContent: "<h1>Header</h1>\n<p><img src='/test/2/sample.svg' class='diagram-svg' alt='diagram' /></p>\n",
 			ExpectedTitle:       "Meta!",
 			ExpectedTags:        []string{"one", "two"},
 			ExpectAnError:       false,
@@ -78,16 +78,16 @@ func TestProcessMarkdown(t *testing.T) {
 	for _, tt := range tests {
 		output, err := parse.ParseMD(tt.Input, tt.Prefix)
 		if output.Content != tt.ExpectedHTMLContent {
-			t.Errorf("expected HTML of %s but found %s", tt.ExpectedHTMLContent, output.Content)
+			t.Errorf("index %d: expected HTML of %s but found %s", count, tt.ExpectedHTMLContent, output.Content)
 		}
 		if tt.ExpectedTitle != output.Title {
-			t.Errorf("expected title '%s' but found '%s'", tt.ExpectedTitle, output.Title)
+			t.Errorf("index %d: expected title '%s' but found '%s'", count, tt.ExpectedTitle, output.Title)
 		}
 		if len(tt.ExpectedTags) != len(output.Tags) {
-			t.Errorf("expected %d tag(s) but found %d", len(tt.ExpectedTags), len(output.Tags))
+			t.Errorf("index %d: expected %d tag(s) but found %d", count, len(tt.ExpectedTags), len(output.Tags))
 		}
 		if tt.ExpectAnError && err == nil {
-			t.Errorf("test %d expected an error but it was nil", count)
+			t.Errorf("index %d: test %d expected an error but it was nil", count, count)
 		}
 		count++
 	}

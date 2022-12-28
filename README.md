@@ -69,12 +69,11 @@ COMMANDS:
 
 GLOBAL OPTIONS:
    --d2-theme value          the D2 theme ID to use (default: 1)
-   --d2-output-type value    the output type for the d2 compiler; can only be svg at this time and is otherwise ignored (default: "svg")
    --input-directory value   the directory to read from and walk to build the site (default: "./src")
    --output-directory value  the output directory to publish the site to (default: "./build")
-   --page-template value     the template to use for each page (default: "./default_templates/page.html")
-   --index-template value    the template to use for the content of the diagram index (default: "./default_templates/diagram_index.html")
-   --tag-template value      the template to use for each tag page content (default: "./default_templates/tag.html")
+   --page-template value     the template to use for each page; if not provided, it will used the embedded template file at compile time
+   --index-template value    the template to use for the content of the diagram index; if not provided, it will used the embedded template file at compile time
+   --tag-template value      the template to use for each tag page content; if not provided, it will used the embedded template file at compile time
    --clean                   if true, removes the target build directory prior to build
    --continue-errors         if true, continues to build site after parsing and compiling errors are found
    --help, -h                show help
@@ -82,44 +81,13 @@ GLOBAL OPTIONS:
 
 ## Templates
 
-Templates are Go-style HTML templates that are applied to the compiled Markdown files. For an example, see the `./cmd/default_templates/leaf.html` file. For a code-based definition, the following data is populated and passed to the templates for use as variables:
+Templates are Go-style HTML templates that are applied to the compiled Markdown files. For an example, see the `./cmd/default_templates/page.html` file. Each template will be built with the `LeafData` filled out for that leaf AFTER all of the filesystem is walked. This is to ensure that each page can generate a navigation panel and search.
 
-```go
-type SiteData struct {
-   Title       string
-   Content     template.HTML
-   Links       []d2s.LeafData
-   Tags        []string
-   SiteTags    map[string][]d2s.LeafData
-   AllDiagrams map[string]*d2s.LeafData
-}
-```
-
-The `LeafData` struct looks like:
-
-```go
-type LeafData struct {
-   Title    string
-   FileName string
-   Tags     []string
-   SiteTags map[string][]LeafData // needed for the nav
-   Links    []LeafData            // needed for the nav
-   Diagrams []string              // needed for the index
-   Content  template.HTML         // used for converting to an html template
-   Summary  string                // used for search displays, found in the meta
-}
-```
-
-Currently, the main template variables that are supported are:
-
-- .Title -> the title of the page
-- .Links -> a map of titles to leaf information, which importantly includes the .Filepath.
-- .Tags -> a slice of tags on the site. Special pages will be generated that shows each HTML file that contains a specific tag
-- .Content -> them HTML-ized content to display on a page
+Each template may be specified at the command line as an argument that is a relative-path. On start, the files will be checked to see if they exist. If they do not, embedded templates shipped with the binary at compile-time will be used. You can find a copy of them in the repo in `cmd/default_templates/*.html`.
 
 ## Search
 
-Search is a local index of pages keyed by their path with the content, title, tags, and summary indexed. It is then parsed through `lunr.js`. If the query param of `search` is present, the search content is displayed. Note that this is purely client-side and driven in the `leaf.html` template, so if you provide your own template, you will need to ensure you either support search as laid out or remove it from your site.
+Search is a local index of pages keyed by their path with the content, title, tags, and summary indexed. It is then parsed through `lunr.js`. If the query param of `search` is present, the search content is displayed. Note that this is purely client-side and driven in the `page.html` template, so if you provide your own template, you will need to ensure you either support search as laid out or remove it from your site.
 
 ## Roadmap
 
@@ -138,7 +106,5 @@ These are not in any specific order. If you are interested in working on, send a
 [ ] Logging and verbosity
 
 [ ] Add static page with output of the test data on main push
-
-[ ] Better error handling if templates are missing
 
 [ ] Config file support

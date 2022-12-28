@@ -11,19 +11,10 @@ func TestValidateOptions(t *testing.T) {
 	if err == nil {
 		t.Error("expected error to not be nil since input directory doesn't exist")
 	}
-	input.InputDirectory = "."
+	input.PageTemplateFile = "./default_templates/page.html"
 	err = validateOptions(input)
 	if err == nil {
-		t.Error("expected error to not be nil since index template doesn't exist")
-	}
-	err = validateOptions(input)
-	if err == nil {
-		t.Error("expected error to not be nil since leaf template doesn't exist")
-	}
-	input.PageTemplate = "./default_templates/leaf.html"
-	err = validateOptions(input)
-	if err != nil {
-		t.Errorf("expected error to nbe nil: %+v", err)
+		t.Errorf("expected error since the page template does not exist: %+v", input)
 	}
 }
 

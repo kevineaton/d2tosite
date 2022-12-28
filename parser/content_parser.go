@@ -20,7 +20,7 @@ import (
 
 // these regexes are used to check for data within the markdown
 var imageReplaceRegex = regexp.MustCompile(`{{(\w+)}}`)
-var titleRegex = regexp.MustCompile(`<h1>(\w+,\s*)</h1>`)
+var titleRegex = regexp.MustCompile(`<h1>(\w+)</h1>`)
 
 // ParseOptions are options relevants specifically to parsing, usually
 // filled in automatically from the CommandOptions if run from the binary
