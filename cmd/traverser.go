@@ -13,11 +13,13 @@ import (
 
 // CommandOptions holds all of the options to pass in to the processors
 type CommandOptions struct {
-	D2Theme         int64
-	D2OutputType    string // currently, this is ignored as the d2 lib only really supports svg outputs
-	InputDirectory  string
-	OutputDirectory string
-	LeafTemplate    string
+	D2Theme                   int64
+	D2OutputType              string // currently, this is ignored as the d2 lib only really supports svg outputs
+	InputDirectory            string
+	OutputDirectory           string
+	LeafTemplate              string
+	CleanOutputDirectoryFirst bool
+	ContinueOnCompileErrors   bool
 }
 
 // SiteData is the main store of the site data

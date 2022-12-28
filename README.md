@@ -120,8 +120,6 @@ Search is a local index of pages keyed by their path with the content, title, ta
 
 These are not in any specific order. If you are interested in working on, send a message or open an issue.
 
-[ ] Add "Site Title" command option to provide a site title across pages
-
 [ ] Add Search Template instead of string output from JS
 
 [ ] GitHub actions to build binaries
@@ -146,6 +144,8 @@ These are not in any specific order. If you are interested in working on, send a
 
 [ ] Logging and verbosity
 
-[ ] Add option to continue on errors from traversing
+[X] Add option to continue on errors from traversing
 
-[ ] Add option to clear out target directory on build
+[X] Add option to clear out target directory on build
+
+[ ] Add static page with output of the test data on main push
