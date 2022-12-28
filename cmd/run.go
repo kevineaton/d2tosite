@@ -41,10 +41,22 @@ func Run() error {
 				Destination: &options.OutputDirectory,
 			},
 			&cli.StringFlag{
-				Name:        "leaf-template",
-				Value:       "./default_templates/leaf.html",
-				Usage:       "the template to use for each leaf; if not provided it will use the included default",
-				Destination: &options.LeafTemplate,
+				Name:        "page-template",
+				Value:       "./default_templates/page.html",
+				Usage:       "the template to use for each page",
+				Destination: &options.PageTemplate,
+			},
+			&cli.StringFlag{
+				Name:        "index-template",
+				Value:       "./default_templates/diagram_index.html",
+				Usage:       "the template to use for the content of the diagram index",
+				Destination: &options.PageTemplate,
+			},
+			&cli.StringFlag{
+				Name:        "tag-template",
+				Value:       "./default_templates/tag.html",
+				Usage:       "the template to use for each tag page content",
+				Destination: &options.PageTemplate,
 			},
 			&cli.BoolFlag{
 				Name:        "clean",
@@ -112,7 +124,7 @@ func execute(options *CommandOptions) error {
 	if err != nil {
 		return err
 	}
-	err = buildIndexPage(options)
+	err = buildDiagramIndexPage(options)
 	return err
 }
 
@@ -126,16 +138,22 @@ func validateOptions(options *CommandOptions) error {
 		options.D2Theme = 8
 	}
 	options.D2OutputType = "svg"
-	if options.LeafTemplate == "" {
-		options.LeafTemplate = "./cmd/default_templates/leaf.html"
+	if options.PageTemplate == "" {
+		options.PageTemplate = "./cmd/default_templates/page.html"
+	}
+	if options.DiagramIndexPageTemplate == "" {
+		options.DiagramIndexPageTemplate = "./cmd/default_templates/diagram_index.html"
+	}
+	if options.TagPageTemplate == "" {
+		options.TagPageTemplate = "./cmd/default_templates/tag.html"
 	}
 
 	// now we need to stat the templates and input
 	if _, err := os.Stat(options.InputDirectory); os.IsNotExist(err) {
 		return fmt.Errorf("input directory %s does not exist, terminating", options.InputDirectory)
 	}
-	if _, err := os.Stat(options.LeafTemplate); os.IsNotExist(err) {
-		return fmt.Errorf("leaf template %s does not exist, terminating", options.LeafTemplate)
+	if _, err := os.Stat(options.PageTemplate); os.IsNotExist(err) {
+		return fmt.Errorf("leaf template %s does not exist, terminating", options.PageTemplate)
 	}
 
 	return err

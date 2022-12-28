@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -17,7 +18,9 @@ type CommandOptions struct {
 	D2OutputType              string // currently, this is ignored as the d2 lib only really supports svg outputs
 	InputDirectory            string
 	OutputDirectory           string
-	LeafTemplate              string
+	PageTemplate              string
+	DiagramIndexPageTemplate  string
+	TagPageTemplate           string
 	CleanOutputDirectoryFirst bool
 	ContinueOnCompileErrors   bool
 }
@@ -129,7 +132,7 @@ func walkInputDirectory(options *CommandOptions) error {
 // processTemplates handles taking the walked file system and changing
 // the site into a serials of templates
 func processTemplates(options *CommandOptions) error {
-	leafTemplate := template.Must(template.ParseFiles(options.LeafTemplate))
+	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
 	for i := range site.Links {
 		if site.Links[i].Title == "" {
 			continue
@@ -163,26 +166,37 @@ func processTemplates(options *CommandOptions) error {
 	return err
 }
 
+// buildTagPages builds each tag page that lists all of the pages that have a tag
 func buildTagPages(options *CommandOptions) error {
 	// we need to crate a tag page for each tag with links to each leaf with that tag
-	leafTemplate := template.Must(template.ParseFiles(options.LeafTemplate))
+	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
+	tagTemplate := template.Must(template.ParseFiles(options.TagPageTemplate))
+	// make sure the tags directory exists
+	err := os.MkdirAll(options.OutputDirectory+"/tags/", os.ModePerm)
+	if err != nil {
+		return err
+	}
 	for tag, leaves := range site.SiteTags {
-		dir := options.OutputDirectory + "/tags/" + tag
-		os.MkdirAll(dir, os.ModePerm)
-		sb := strings.Builder{}
-		sb.WriteString(fmt.Sprintf("<strong>Tag %s</strong><ul>", tag))
-		for i := range leaves {
-			sb.WriteString(fmt.Sprintf("<li><a href='%s'>%s</a></li>", leaves[i].FileName, leaves[i].Title))
+		tagFileName := strings.ReplaceAll(tag, " ", "_")
+		// dir := options.OutputDirectory + "/tags/" + tag
+		// os.MkdirAll(dir, os.ModePerm)
+		var tagOutput bytes.Buffer
+		err := tagTemplate.Execute(&tagOutput, map[string]interface{}{
+			"Tag":    tag,
+			"Leaves": leaves,
+		})
+		if err != nil {
+			fmt.Printf("tag template error: %+v\n", err)
+			continue
 		}
-		sb.WriteString("</ul>")
-		html := sb.String()
+
 		temp := d2s.LeafData{
 			Title:    tag,
-			Content:  template.HTML(html),
+			Content:  template.HTML(tagOutput.String()),
 			Links:    site.Links,
 			SiteTags: site.SiteTags,
 		}
-		output, err := os.Create(dir + "/index.html")
+		output, err := os.Create(options.OutputDirectory + "/tags/" + tagFileName + ".html")
 		if err != nil {
 			return err
 		}
@@ -195,45 +209,18 @@ func buildTagPages(options *CommandOptions) error {
 	return nil
 }
 
-func buildIndexPage(options *CommandOptions) error {
-	leafTemplate := template.Must(template.ParseFiles(options.LeafTemplate))
-	sb := strings.Builder{}
-	sb.WriteString("<h1>Diagram Index</h1>")
-	if len(site.AllDiagrams) == 0 {
-		sb.WriteString("<p>No diagrams produced</p>")
+// buildDiagramIndexPage builds the index of all the diagrams
+func buildDiagramIndexPage(options *CommandOptions) error {
+	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
+	diagramTemplate := template.Must(template.ParseFiles(options.DiagramIndexPageTemplate))
+	var diagramOutput bytes.Buffer
+	err := diagramTemplate.Execute(&diagramOutput, site)
+	if err != nil {
+		return err
 	}
-	for diagram, leaf := range site.AllDiagrams {
-		sb.WriteString(fmt.Sprintf(`
-			<div class="diagram-index-container">
-				<div class="row">
-					<div class="col-3">
-					<a href="%s" target="_%s" class="diagram-index-link diagram-index-link-title">%s</a>
-					</div>
-					<div class="col-7">
-						<a href="%s" target="_%s" class="diagram-index-link diagram-index-link-path">%s</a>
-					</div>
-					<div class="col-2">
-					</div>
-				</div>
-				<div class="row">
-					<div class="col-10 offset-1">
-						<strong>Summary</strong><br />
-						%s
-					</div>
-				</div>
-			</div>`,
-			diagram,
-			diagram,
-			leaf.Title,
-			diagram,
-			diagram,
-			diagram,
-			leaf.Summary))
-	}
-	html := sb.String()
 	temp := d2s.LeafData{
 		Title:    "Index",
-		Content:  template.HTML(html),
+		Content:  template.HTML(diagramOutput.String()),
 		Links:    site.Links,
 		SiteTags: site.SiteTags,
 	}

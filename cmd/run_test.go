@@ -20,7 +20,7 @@ func TestValidateOptions(t *testing.T) {
 	if err == nil {
 		t.Error("expected error to not be nil since leaf template doesn't exist")
 	}
-	input.LeafTemplate = "./default_templates/leaf.html"
+	input.PageTemplate = "./default_templates/leaf.html"
 	err = validateOptions(input)
 	if err != nil {
 		t.Errorf("expected error to nbe nil: %+v", err)
