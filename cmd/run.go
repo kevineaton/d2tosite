@@ -46,6 +46,16 @@ func Run() error {
 				Usage:       "the template to use for each leaf; if not provided it will use the included default",
 				Destination: &options.LeafTemplate,
 			},
+			&cli.BoolFlag{
+				Name:        "clean",
+				Usage:       "if true, removes the target build directory prior to build",
+				Destination: &options.CleanOutputDirectoryFirst,
+			},
+			&cli.BoolFlag{
+				Name:        "continue-errors",
+				Usage:       "if true, continues to build site after parsing and compiling errors are found",
+				Destination: &options.ContinueOnCompileErrors,
+			},
 		},
 		Action: func(context *cli.Context) error {
 			// check the arguments; if there's 2, then we override what is
@@ -74,6 +84,12 @@ func execute(options *CommandOptions) error {
 	if err != nil {
 		return err
 	}
+	if options.CleanOutputDirectoryFirst {
+		err = os.RemoveAll(options.OutputDirectory)
+		if err != nil {
+			return err
+		}
+	}
 	err = walkInputDirectory(options)
 	if err != nil { // this will almost always be nil
 		return err
@@ -82,7 +98,11 @@ func execute(options *CommandOptions) error {
 		for i := range traverseErrors {
 			fmt.Printf("error: %+v\n", traverseErrors[i])
 		}
-		return errors.New("errors encountered, stopping")
+		if options.ContinueOnCompileErrors {
+			fmt.Printf("options set to continue on errors, continuing...\n")
+		} else {
+			return errors.New("errors encountered, stopping")
+		}
 	}
 	err = processTemplates(options)
 	if err != nil {
