@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -40,11 +41,6 @@ func Run() error {
 				Destination: &options.OutputDirectory,
 			},
 			&cli.StringFlag{
-				Name:  "index-template",
-				Value: "./default_templates/index.html",
-				Usage: "the template to use for the index; if not provided it will use the included default",
-			},
-			&cli.StringFlag{
 				Name:        "leaf-template",
 				Value:       "./default_templates/leaf.html",
 				Usage:       "the template to use for each leaf; if not provided it will use the included default",
@@ -79,8 +75,14 @@ func execute(options *CommandOptions) error {
 		return err
 	}
 	err = walkInputDirectory(options)
-	if err != nil {
+	if err != nil { // this will almost always be nil
 		return err
+	}
+	if len(traverseErrors) != 0 {
+		for i := range traverseErrors {
+			fmt.Printf("error: %+v\n", traverseErrors[i])
+		}
+		return errors.New("errors encountered, stopping")
 	}
 	err = processTemplates(options)
 	if err != nil {
@@ -90,7 +92,7 @@ func execute(options *CommandOptions) error {
 	if err != nil {
 		return err
 	}
-	err = buildSearchPage(options)
+	err = buildIndexPage(options)
 	return err
 }
 

@@ -1,0 +1,16 @@
+Login Flow: {
+  shape: sequence_diagram
+  caller: Caller; api: API Server; users: Users Service; db: Database
+  
+  db.shape: cylinder
+  api.shape: cloud
+
+  caller -> api: username and password
+  api -> users: Forwards and parses
+  users -> db: Get information for username
+  db -> users: Returns salted, encrypted information
+  users -> users: Checks for correct credentials
+  users -> api: IF NOT valid: 401
+  users -> api: IF valid: username, access_token, refresh_token
+  api -> caller: Result
+}

@@ -1,0 +1,15 @@
+Logout Flow: {
+  shape: sequence_diagram
+  caller: Caller; api: API Server; users: Users Service; db: Database
+  
+  db.shape: cylinder
+  api.shape: cloud
+
+  caller -> api
+  api -> users
+  users -> db: Delete refresh_token and invalidate cache
+  db -> users
+  users -> api
+  api."Invalidate the local cache, but it may take 5 minutes to logout everywhere"
+  api -> caller: Inform about timeout
+}
