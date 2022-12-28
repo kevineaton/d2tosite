@@ -18,12 +18,12 @@ func TestValidateOptions(t *testing.T) {
 	}
 	err = validateOptions(input)
 	if err == nil {
-		t.Error("expected error to not be nil since leaf template doesn't exist")
+		t.Error("expected error to not be nil since page template doesn't exist")
 	}
-	input.PageTemplate = "./default_templates/leaf.html"
+	input.PageTemplateFile = "./default_templates/page.html"
 	err = validateOptions(input)
 	if err != nil {
-		t.Errorf("expected error to nbe nil: %+v", err)
+		t.Errorf("expected error to be nil: %+v", err)
 	}
 }
 

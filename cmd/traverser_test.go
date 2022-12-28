@@ -46,9 +46,11 @@ func TestWalkDir(t *testing.T) {
 	file.Close()
 
 	err = execute(&CommandOptions{
-		InputDirectory:  testPath + "/src",
-		OutputDirectory: testPath + "/build",
-		PageTemplate:    "./default_templates/leaf.html",
+		InputDirectory:               testPath + "/src",
+		OutputDirectory:              testPath + "/build",
+		PageTemplateFile:             "./default_templates/page.html",
+		TagPageTemplateFile:          "./default_templates/tag.html",
+		DiagramIndexPageTemplateFile: "./default_templates/diagram_index.html",
 	})
 	if err != nil {
 		t.Fatalf("tried to walk but could not: %v", err)

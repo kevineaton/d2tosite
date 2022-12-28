@@ -1,12 +1,23 @@
 package cmd
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
+	"html/template"
 	"os"
 
 	"github.com/urfave/cli"
 )
+
+//go:embed default_templates/page.html
+var pageTemplateEmbedString string
+
+//go:embed default_templates/tag.html
+var tagTemplateEmbedString string
+
+//go:embed default_templates/diagram_index.html
+var diagramIndexTemplateEmbedString string
 
 // Run is the main entrypoint for the binary. It takes various options and then works through the process
 func Run() error {
@@ -23,12 +34,6 @@ func Run() error {
 				Destination: &options.D2Theme,
 			},
 			&cli.StringFlag{
-				Name:        "d2-output-type",
-				Value:       "svg",
-				Usage:       "the output type for the d2 compiler; can only be svg at this time and is otherwise ignored",
-				Destination: &options.D2OutputType,
-			},
-			&cli.StringFlag{
 				Name:        "input-directory",
 				Value:       "./src",
 				Usage:       "the directory to read from and walk to build the site",
@@ -42,21 +47,21 @@ func Run() error {
 			},
 			&cli.StringFlag{
 				Name:        "page-template",
-				Value:       "./default_templates/page.html",
-				Usage:       "the template to use for each page",
-				Destination: &options.PageTemplate,
+				Value:       "",
+				Usage:       "the template to use for each page; if not provided, it will used the embedded template file at compile time",
+				Destination: &options.PageTemplateFile,
 			},
 			&cli.StringFlag{
 				Name:        "index-template",
-				Value:       "./default_templates/diagram_index.html",
-				Usage:       "the template to use for the content of the diagram index",
-				Destination: &options.PageTemplate,
+				Value:       "",
+				Usage:       "the template to use for the content of the diagram index; if not provided, it will used the embedded template file at compile time",
+				Destination: &options.PageTemplateFile,
 			},
 			&cli.StringFlag{
 				Name:        "tag-template",
-				Value:       "./default_templates/tag.html",
-				Usage:       "the template to use for each tag page content",
-				Destination: &options.PageTemplate,
+				Value:       "",
+				Usage:       "the template to use for each tag page content; if not provided, it will used the embedded template file at compile time",
+				Destination: &options.PageTemplateFile,
 			},
 			&cli.BoolFlag{
 				Name:        "clean",
@@ -78,11 +83,7 @@ func Run() error {
 				options.InputDirectory = argInput
 				options.OutputDirectory = argOutput
 			}
-			err := validateOptions(options)
-			if err != nil {
-				return err
-			}
-			err = execute(options)
+			err := execute(options)
 			return err
 		},
 	}
@@ -137,23 +138,83 @@ func validateOptions(options *CommandOptions) error {
 	if options.D2Theme == 0 {
 		options.D2Theme = 8
 	}
-	options.D2OutputType = "svg"
-	if options.PageTemplate == "" {
-		options.PageTemplate = "./cmd/default_templates/page.html"
+
+	// now we want to validate the templates; if one isn't provided
+	// we will use the embedded ones. Effectively, check if the template exists
+	// and if either it doesn't or a filename wasn't provided, fall back to the
+	// embedded ones
+
+	if options.PageTemplateFile != "" {
+		foundTemplate, err := template.ParseFiles(options.PageTemplateFile)
+		if err != nil {
+			// we couldn't parse it, so show an error and load the template
+			fmt.Printf("error: could not find page template: %s\n", options.PageTemplateFile)
+			// if we close on errors, close
+			if !options.ContinueOnCompileErrors {
+				return err
+			}
+		} else {
+			options.PageTemplate = foundTemplate
+		}
 	}
-	if options.DiagramIndexPageTemplate == "" {
-		options.DiagramIndexPageTemplate = "./cmd/default_templates/diagram_index.html"
-	}
-	if options.TagPageTemplate == "" {
-		options.TagPageTemplate = "./cmd/default_templates/tag.html"
+	// check if the template is nil from either not being provided a valid file OR the input was blank
+	if options.PageTemplate == nil {
+		foundTemplate, err := template.New("pageTemplate").Parse(pageTemplateEmbedString)
+		if err != nil {
+			return err
+		}
+		options.PageTemplate = foundTemplate
 	}
 
-	// now we need to stat the templates and input
+	// repeat for tag template
+	if options.TagPageTemplateFile != "" {
+		foundTemplate, err := template.ParseFiles(options.TagPageTemplateFile)
+		if err != nil {
+			// we couldn't parse it, so show an error and load the template
+			fmt.Printf("error: could not find tag template: %s\n", options.TagPageTemplateFile)
+			// if we close on errors, close
+			if !options.ContinueOnCompileErrors {
+				return err
+			}
+		} else {
+			options.TagPageTemplate = foundTemplate
+		}
+	}
+	// check if the template is nil from either not being provided a valid file OR the input was blank
+	if options.TagPageTemplate == nil {
+		foundTemplate, err := template.New("tagTemplate").Parse(tagTemplateEmbedString)
+		if err != nil {
+			return err
+		}
+		options.TagPageTemplate = foundTemplate
+	}
+
+	// again for diagram index
+	if options.DiagramIndexPageTemplateFile != "" {
+		foundTemplate, err := template.ParseFiles(options.DiagramIndexPageTemplateFile)
+		if err != nil {
+			// we couldn't parse it, so show an error and load the template
+			fmt.Printf("error: could not find diagram index template: %s\n", options.DiagramIndexPageTemplateFile)
+			// if we close on errors, close
+			if !options.ContinueOnCompileErrors {
+				return err
+			}
+		} else {
+			options.DiagramIndexPageTemplate = foundTemplate
+		}
+	}
+	// check if the template is nil from either not being provided a valid file OR the input was blank
+	if options.DiagramIndexPageTemplate == nil {
+		foundTemplate, err := template.New("diagramIndexTemplate").Parse(diagramIndexTemplateEmbedString)
+		if err != nil {
+			return err
+		}
+		options.DiagramIndexPageTemplate = foundTemplate
+	}
+
+	// now we need to stat the input
 	if _, err := os.Stat(options.InputDirectory); os.IsNotExist(err) {
 		return fmt.Errorf("input directory %s does not exist, terminating", options.InputDirectory)
-	}
-	if _, err := os.Stat(options.PageTemplate); os.IsNotExist(err) {
-		return fmt.Errorf("leaf template %s does not exist, terminating", options.PageTemplate)
 	}
 
 	return err

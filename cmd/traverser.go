@@ -14,15 +14,19 @@ import (
 
 // CommandOptions holds all of the options to pass in to the processors
 type CommandOptions struct {
-	D2Theme                   int64
-	D2OutputType              string // currently, this is ignored as the d2 lib only really supports svg outputs
-	InputDirectory            string
-	OutputDirectory           string
-	PageTemplate              string
-	DiagramIndexPageTemplate  string
-	TagPageTemplate           string
-	CleanOutputDirectoryFirst bool
-	ContinueOnCompileErrors   bool
+	D2Theme                      int64
+	InputDirectory               string
+	OutputDirectory              string
+	PageTemplateFile             string
+	DiagramIndexPageTemplateFile string
+	TagPageTemplateFile          string
+	CleanOutputDirectoryFirst    bool
+	ContinueOnCompileErrors      bool
+
+	// the below are needed post-processing
+	PageTemplate             *template.Template
+	DiagramIndexPageTemplate *template.Template
+	TagPageTemplate          *template.Template
 }
 
 // SiteData is the main store of the site data
@@ -57,8 +61,7 @@ func walkInputDirectory(options *CommandOptions) error {
 	inputPath := options.InputDirectory
 	outputPath := options.OutputDirectory
 	parseOptions := &d2s.ParseOptions{
-		D2Theme:      options.D2Theme,
-		D2OutputType: options.D2OutputType,
+		D2Theme: options.D2Theme,
 	}
 
 	fsys := os.DirFS(inputPath)
@@ -95,7 +98,7 @@ func walkInputDirectory(options *CommandOptions) error {
 		case ".d2":
 			// if it's a d2 diagram, hand it off for compilation
 			outputFile = strings.TrimSuffix(outputFile, filepath.Ext(path))
-			outputFile += "." + options.D2OutputType
+			outputFile += ".svg"
 			err := handleD2(inputFile, outputFile, parseOptions)
 			if err != nil {
 				traverseErrors = append(traverseErrors, fmt.Errorf("%s: %+v", outputFile, err))
@@ -132,7 +135,6 @@ func walkInputDirectory(options *CommandOptions) error {
 // processTemplates handles taking the walked file system and changing
 // the site into a serials of templates
 func processTemplates(options *CommandOptions) error {
-	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
 	for i := range site.Links {
 		if site.Links[i].Title == "" {
 			continue
@@ -144,7 +146,7 @@ func processTemplates(options *CommandOptions) error {
 		defer output.Close()
 		site.Links[i].Links = site.Links
 		site.Links[i].SiteTags = site.SiteTags
-		err = leafTemplate.Execute(output, site.Links[i])
+		err = options.PageTemplate.Execute(output, site.Links[i])
 		if err != nil {
 			return err
 		}
@@ -162,15 +164,13 @@ func processTemplates(options *CommandOptions) error {
 		Links:    site.Links,
 		SiteTags: site.SiteTags,
 	}
-	err = leafTemplate.Execute(output, searchPage)
+	err = options.PageTemplate.Execute(output, searchPage)
 	return err
 }
 
 // buildTagPages builds each tag page that lists all of the pages that have a tag
 func buildTagPages(options *CommandOptions) error {
 	// we need to crate a tag page for each tag with links to each leaf with that tag
-	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
-	tagTemplate := template.Must(template.ParseFiles(options.TagPageTemplate))
 	// make sure the tags directory exists
 	err := os.MkdirAll(options.OutputDirectory+"/tags/", os.ModePerm)
 	if err != nil {
@@ -181,7 +181,7 @@ func buildTagPages(options *CommandOptions) error {
 		// dir := options.OutputDirectory + "/tags/" + tag
 		// os.MkdirAll(dir, os.ModePerm)
 		var tagOutput bytes.Buffer
-		err := tagTemplate.Execute(&tagOutput, map[string]interface{}{
+		err := options.TagPageTemplate.Execute(&tagOutput, map[string]interface{}{
 			"Tag":    tag,
 			"Leaves": leaves,
 		})
@@ -201,7 +201,7 @@ func buildTagPages(options *CommandOptions) error {
 			return err
 		}
 		defer output.Close()
-		err = leafTemplate.Execute(output, temp)
+		err = options.PageTemplate.Execute(output, temp)
 		if err != nil {
 			return err
 		}
@@ -211,10 +211,8 @@ func buildTagPages(options *CommandOptions) error {
 
 // buildDiagramIndexPage builds the index of all the diagrams
 func buildDiagramIndexPage(options *CommandOptions) error {
-	leafTemplate := template.Must(template.ParseFiles(options.PageTemplate))
-	diagramTemplate := template.Must(template.ParseFiles(options.DiagramIndexPageTemplate))
 	var diagramOutput bytes.Buffer
-	err := diagramTemplate.Execute(&diagramOutput, site)
+	err := options.DiagramIndexPageTemplate.Execute(&diagramOutput, site)
 	if err != nil {
 		return err
 	}
@@ -229,7 +227,7 @@ func buildDiagramIndexPage(options *CommandOptions) error {
 		return err
 	}
 	defer output.Close()
-	err = leafTemplate.Execute(output, temp)
+	err = options.PageTemplate.Execute(output, temp)
 	if err != nil {
 		return err
 	}
