@@ -72,7 +72,11 @@ GLOBAL OPTIONS:
    --d2-output-type value    the output type for the d2 compiler; can only be svg at this time and is otherwise ignored (default: "svg")
    --input-directory value   the directory to read from and walk to build the site (default: "./src")
    --output-directory value  the output directory to publish the site to (default: "./build")
-   --leaf-template value     the template to use for each leaf; if not provided it will use the included default (default: "./default_templates/leaf.html")
+   --page-template value     the template to use for each page (default: "./default_templates/page.html")
+   --index-template value    the template to use for the content of the diagram index (default: "./default_templates/diagram_index.html")
+   --tag-template value      the template to use for each tag page content (default: "./default_templates/tag.html")
+   --clean                   if true, removes the target build directory prior to build
+   --continue-errors         if true, continues to build site after parsing and compiling errors are found
    --help, -h                show help
 ```
 
@@ -81,13 +85,13 @@ GLOBAL OPTIONS:
 Templates are Go-style HTML templates that are applied to the compiled Markdown files. For an example, see the `./cmd/default_templates/leaf.html` file. For a code-based definition, the following data is populated and passed to the templates for use as variables:
 
 ```go
-
 type SiteData struct {
-  Title    string
-  Content  template.HTML
-  Links    []d2s.LeafData
-  Tags     []string
-  SiteTags map[string][]d2s.LeafData
+   Title       string
+   Content     template.HTML
+   Links       []d2s.LeafData
+   Tags        []string
+   SiteTags    map[string][]d2s.LeafData
+   AllDiagrams map[string]*d2s.LeafData
 }
 ```
 
@@ -95,13 +99,14 @@ The `LeafData` struct looks like:
 
 ```go
 type LeafData struct {
-  Title    string
-  FileName string
-  Tags     []string
-  SiteTags map[string][]LeafData // needed for the nav
-  Links    []LeafData            // needed for the nav
-  Content  template.HTML         // used for converting to an html template
-  Summary  string                // used for search displays, found in the meta
+   Title    string
+   FileName string
+   Tags     []string
+   SiteTags map[string][]LeafData // needed for the nav
+   Links    []LeafData            // needed for the nav
+   Diagrams []string              // needed for the index
+   Content  template.HTML         // used for converting to an html template
+   Summary  string                // used for search displays, found in the meta
 }
 ```
 
@@ -120,13 +125,7 @@ Search is a local index of pages keyed by their path with the content, title, ta
 
 These are not in any specific order. If you are interested in working on, send a message or open an issue.
 
-[ ] Add Search Template instead of string output from JS
-
 [ ] GitHub actions to build binaries
-
-[X] Better default templates
-
-[ ] Add Tag template for the tags
 
 [ ] Dockerize the binaries for easier use
 
@@ -136,16 +135,10 @@ These are not in any specific order. If you are interested in working on, send a
 
 [ ] UI testing for HTML generation
 
-[X] Add warnings on compilations that have errors
-
-[X] Add diagram list index
-
-[ ] Add Diagram Index template
-
 [ ] Logging and verbosity
 
-[X] Add option to continue on errors from traversing
-
-[X] Add option to clear out target directory on build
-
 [ ] Add static page with output of the test data on main push
+
+[ ] Better error handling if templates are missing
+
+[ ] Config file support

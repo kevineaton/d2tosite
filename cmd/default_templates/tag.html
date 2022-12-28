@@ -1,0 +1,10 @@
+<h1>Tag {{.Tag}}</h1>
+
+{{ range .Leaves }}
+  <div class="row tag-list-row">
+    <div class="col-12">
+      <a href="{{.FileName}}">{{.Title}}</a><br />
+      <strong>Summary: </strong> {{.Summary}}
+    </div>
+  </div>
+{{end}}
