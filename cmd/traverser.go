@@ -14,14 +14,15 @@ import (
 
 // CommandOptions holds all of the options to pass in to the processors
 type CommandOptions struct {
-	D2Theme                      int64
-	InputDirectory               string
-	OutputDirectory              string
-	PageTemplateFile             string
-	DiagramIndexPageTemplateFile string
-	TagPageTemplateFile          string
-	CleanOutputDirectoryFirst    bool
-	ContinueOnCompileErrors      bool
+	ConfigFile                   string `json:"config" yaml:"config"` // if this is provided, it is set first THEN the rest will be used
+	D2Theme                      int64  `json:"d2_theme" yaml:"d2_theme"`
+	InputDirectory               string `json:"input_directory" yaml:"input_directory"`
+	OutputDirectory              string `json:"output_directory" yaml:"output_directory"`
+	PageTemplateFile             string `json:"page_template" yaml:"page_template"`
+	DiagramIndexPageTemplateFile string `json:"index_template" yaml:"index_template"`
+	TagPageTemplateFile          string `json:"tag_template" yaml:"tag_template"`
+	CleanOutputDirectoryFirst    bool   `json:"clean" yaml:"clean"`
+	ContinueOnCompileErrors      bool   `json:"continue_errors" yaml:"continue_errors"`
 
 	// the below are needed post-processing
 	PageTemplate             *template.Template

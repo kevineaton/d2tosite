@@ -47,6 +47,7 @@ require (
 	gonum.org/v1/plot v0.12.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 	oss.terrastruct.com/d2 v0.1.2 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20221219053816-eb266649d2ed // indirect

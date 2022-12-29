@@ -56,7 +56,7 @@ This will generate the title and tags as meta data, render the content as Markdo
 ```bash
 $ ./d2tosite -h
 NAME:
-   d2tosite - Use it
+   d2tosite
 
 USAGE:
     [global options] command [command options] [arguments...]
@@ -68,6 +68,7 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
+   --config value            a config file that can be used to configure the build; if other flags are sent as well, they will override the file
    --d2-theme value          the D2 theme ID to use (default: 1)
    --input-directory value   the directory to read from and walk to build the site (default: "./src")
    --output-directory value  the output directory to publish the site to (default: "./build")
@@ -78,6 +79,10 @@ GLOBAL OPTIONS:
    --continue-errors         if true, continues to build site after parsing and compiling errors are found
    --help, -h                show help
 ```
+
+## Configuration
+
+You may choose to pass in a `.json` or `.yml` file as a configuration option. The extension will determine the parsing. Although there are many different naming conventions available, snake_case was chosen for simplicity. Effectively, the keys are just the binary command line options with `-` changed to `_`.
 
 ## Templates
 
@@ -107,4 +112,4 @@ These are not in any specific order. If you are interested in working on, send a
 
 [ ] Add static page with output of the test data on main push
 
-[ ] Config file support
+[ ] Add output types of site (default), single-page (all on the same page, in order), or JSON (for consumption elsewhere)

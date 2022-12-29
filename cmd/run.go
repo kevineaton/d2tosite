@@ -2,12 +2,15 @@ package cmd
 
 import (
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"os"
+	"path/filepath"
 
 	"github.com/urfave/cli"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed default_templates/page.html
@@ -25,8 +28,13 @@ func Run() error {
 	app := &cli.App{
 		Name:        "d2tosite",
 		Description: "A simple CLI that traverses a directory and generates a basic HTML site from Markdown and D2 files",
-		Usage:       "Use it",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "config",
+				Value:       "",
+				Usage:       "a config file that can be used to configure the build; if other flags are sent as well, they will override the file",
+				Destination: &options.ConfigFile,
+			},
 			&cli.Int64Flag{
 				Name:        "d2-theme",
 				Value:       1,
@@ -55,13 +63,13 @@ func Run() error {
 				Name:        "index-template",
 				Value:       "",
 				Usage:       "the template to use for the content of the diagram index; if not provided, it will used the embedded template file at compile time",
-				Destination: &options.PageTemplateFile,
+				Destination: &options.DiagramIndexPageTemplateFile,
 			},
 			&cli.StringFlag{
 				Name:        "tag-template",
 				Value:       "",
 				Usage:       "the template to use for each tag page content; if not provided, it will used the embedded template file at compile time",
-				Destination: &options.PageTemplateFile,
+				Destination: &options.TagPageTemplateFile,
 			},
 			&cli.BoolFlag{
 				Name:        "clean",
@@ -83,7 +91,11 @@ func Run() error {
 				options.InputDirectory = argInput
 				options.OutputDirectory = argOutput
 			}
-			err := execute(options)
+			err := parseConfiguration(options)
+			if err != nil {
+				return err
+			}
+			err = execute(options)
 			return err
 		},
 	}
@@ -127,6 +139,55 @@ func execute(options *CommandOptions) error {
 	}
 	err = buildDiagramIndexPage(options)
 	return err
+}
+
+func parseConfiguration(options *CommandOptions) error {
+	if options.ConfigFile != "" {
+		// they passed in a file we need to try to parse
+		contents, err := os.ReadFile(options.ConfigFile)
+		if err != nil {
+			return fmt.Errorf("error: could not read config file '%s'", options.ConfigFile)
+		}
+		fileOptions := &CommandOptions{}
+		switch filepath.Ext(options.ConfigFile) {
+		case ".json":
+			err = json.Unmarshal(contents, fileOptions)
+		case ".yaml":
+			err = yaml.Unmarshal(contents, fileOptions)
+		default:
+			return fmt.Errorf("error: config file extension of %s not supported", filepath.Ext(options.ConfigFile))
+		}
+		if err != nil {
+			return fmt.Errorf("error: parsing config file: %s", err.Error())
+		}
+		// now de dupe
+		if (options.D2Theme == 1 || options.D2Theme == 0) && fileOptions.D2Theme != 0 {
+			options.D2Theme = fileOptions.D2Theme
+		}
+		if options.InputDirectory == "./src" && fileOptions.InputDirectory != "" {
+			options.InputDirectory = fileOptions.InputDirectory
+		}
+		if options.OutputDirectory == "./build" && fileOptions.OutputDirectory != "" {
+			options.OutputDirectory = fileOptions.OutputDirectory
+		}
+		if options.PageTemplateFile == "" && fileOptions.PageTemplateFile != "" {
+			options.PageTemplateFile = fileOptions.PageTemplateFile
+		}
+		if options.DiagramIndexPageTemplateFile == "" && fileOptions.DiagramIndexPageTemplateFile != "" {
+			options.DiagramIndexPageTemplateFile = fileOptions.DiagramIndexPageTemplateFile
+		}
+		if options.TagPageTemplateFile == "" && fileOptions.TagPageTemplateFile != "" {
+			options.TagPageTemplateFile = fileOptions.TagPageTemplateFile
+		}
+		if !options.CleanOutputDirectoryFirst {
+			options.CleanOutputDirectoryFirst = fileOptions.CleanOutputDirectoryFirst
+		}
+		if !options.ContinueOnCompileErrors {
+			options.ContinueOnCompileErrors = fileOptions.ContinueOnCompileErrors
+		}
+
+	}
+	return nil
 }
 
 // validateOptions validates the options prior to running
