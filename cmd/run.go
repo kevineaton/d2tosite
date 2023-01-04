@@ -22,6 +22,25 @@ var tagTemplateEmbedString string
 //go:embed default_templates/diagram_index.html
 var diagramIndexTemplateEmbedString string
 
+// CommandOptions holds all of the options to pass in to the processors
+type CommandOptions struct {
+	ConfigFile                   string `json:"config" yaml:"config"` // if this is provided, it is set first THEN the rest will be used
+	D2Theme                      int64  `json:"d2_theme" yaml:"d2_theme"`
+	D2Layout                     string `json:"d2_layout" yaml:"d2_layout"`
+	InputDirectory               string `json:"input_directory" yaml:"input_directory"`
+	OutputDirectory              string `json:"output_directory" yaml:"output_directory"`
+	PageTemplateFile             string `json:"page_template" yaml:"page_template"`
+	DiagramIndexPageTemplateFile string `json:"index_template" yaml:"index_template"`
+	TagPageTemplateFile          string `json:"tag_template" yaml:"tag_template"`
+	CleanOutputDirectoryFirst    bool   `json:"clean" yaml:"clean"`
+	ContinueOnCompileErrors      bool   `json:"continue_errors" yaml:"continue_errors"`
+
+	// the below are needed post-processing
+	PageTemplate             *template.Template
+	DiagramIndexPageTemplate *template.Template
+	TagPageTemplate          *template.Template
+}
+
 // Run is the main entrypoint for the binary. It takes various options and then works through the process
 func Run() error {
 	options := &CommandOptions{}
@@ -40,6 +59,12 @@ func Run() error {
 				Value:       1,
 				Usage:       "the D2 theme ID to use",
 				Destination: &options.D2Theme,
+			},
+			&cli.StringFlag{
+				Name:        "d2-layout",
+				Value:       "dagre",
+				Usage:       "the layout enginer to use for D2; can be 'dagre' or 'elk'",
+				Destination: &options.D2Layout,
 			},
 			&cli.StringFlag{
 				Name:        "input-directory",
@@ -198,6 +223,9 @@ func validateOptions(options *CommandOptions) error {
 	}
 	if options.D2Theme == 0 {
 		options.D2Theme = 8
+	}
+	if options.D2Layout != "dagre" && options.D2Layout != "elk" {
+		options.D2Layout = "dagre"
 	}
 
 	// now we want to validate the templates; if one isn't provided

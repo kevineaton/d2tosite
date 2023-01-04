@@ -13,6 +13,7 @@ import (
 	meta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/parser"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
+	"oss.terrastruct.com/d2/d2layouts/d2elklayout"
 	"oss.terrastruct.com/d2/d2lib"
 	"oss.terrastruct.com/d2/d2renderers/d2svg"
 	"oss.terrastruct.com/d2/lib/textmeasure"
@@ -25,8 +26,8 @@ var titleRegex = regexp.MustCompile(`<h1>(\w+)</h1>`)
 // ParseOptions are options relevants specifically to parsing, usually
 // filled in automatically from the CommandOptions if run from the binary
 type ParseOptions struct {
-	D2Theme      int64
-	D2OutputType string // currently, this is ignored as the d2 lib only really supports svg outputs
+	D2Theme  int64
+	D2Layout string // one of elk or dagre, defaults ot dagre; tala is not supported in the library
 }
 
 // LeafData holds the data for a leaf that will then be used to build the site
@@ -132,19 +133,28 @@ func ParseD2(input []byte, options *ParseOptions) ([]byte, error) {
 	}
 	if options == nil {
 		options = &ParseOptions{
-			D2Theme:      1,
-			D2OutputType: "svg",
+			D2Theme: 1,
 		}
 	}
 	ruler, err := textmeasure.NewRuler()
 	if err != nil {
 		return bytes, err
 	}
-	diagram, _, err := d2lib.Compile(context.Background(), string(input), &d2lib.CompileOptions{
-		Layout:  d2dagrelayout.Layout,
+
+	compileOptions := &d2lib.CompileOptions{
 		Ruler:   ruler,
 		ThemeID: options.D2Theme,
-	})
+	}
+	switch strings.ToLower(options.D2Layout) {
+	case "elk":
+		compileOptions.Layout = d2elklayout.Layout
+	case "dagre":
+		compileOptions.Layout = d2dagrelayout.Layout
+	default:
+		compileOptions.Layout = d2dagrelayout.Layout
+	}
+
+	diagram, _, err := d2lib.Compile(context.Background(), string(input), compileOptions)
 	if err != nil {
 		return bytes, err
 	}
