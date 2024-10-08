@@ -1,6 +1,6 @@
 module github.com/kevineaton/d2tosite
 
-go 1.19
+go 1.22
 
 require (
 	github.com/urfave/cli v1.22.10
