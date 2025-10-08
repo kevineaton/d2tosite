@@ -2,8 +2,14 @@ package d2target
 
 import (
 	"fmt"
+)
 
-	"oss.terrastruct.com/d2/d2renderers/d2fonts"
+const (
+	PrefixPadding = 10
+	PrefixWidth   = 20
+	CenterPadding = 50
+	// 10px of padding top and bottom so text doesn't look squished
+	VerticalPadding = 20
 )
 
 type Class struct {
@@ -15,15 +21,28 @@ type ClassField struct {
 	Name       string `json:"name"`
 	Type       string `json:"type"`
 	Visibility string `json:"visibility"`
+	Underline  bool   `json:"underline"`
 }
 
-func (cf ClassField) Text() *MText {
+func (cf ClassField) Text(fontSize int) *MText {
 	return &MText{
-		Text:     fmt.Sprintf("%s%s", cf.Name, cf.Type),
-		FontSize: d2fonts.FONT_SIZE_L,
-		IsBold:   false,
-		IsItalic: false,
-		Shape:    "class",
+		Text:        fmt.Sprintf("%s%s", cf.Name, cf.Type),
+		FontSize:    fontSize,
+		IsBold:      false,
+		IsItalic:    false,
+		IsUnderline: cf.Underline,
+		Shape:       "class",
+	}
+}
+
+func (cf ClassField) VisibilityToken() string {
+	switch cf.Visibility {
+	case "protected":
+		return "#"
+	case "private":
+		return "-"
+	default:
+		return "+"
 	}
 }
 
@@ -31,14 +50,27 @@ type ClassMethod struct {
 	Name       string `json:"name"`
 	Return     string `json:"return"`
 	Visibility string `json:"visibility"`
+	Underline  bool   `json:"underline"`
 }
 
-func (cm ClassMethod) Text() *MText {
+func (cm ClassMethod) Text(fontSize int) *MText {
 	return &MText{
-		Text:     fmt.Sprintf("%s%s", cm.Name, cm.Return),
-		FontSize: d2fonts.FONT_SIZE_L,
-		IsBold:   false,
-		IsItalic: false,
-		Shape:    "class",
+		Text:        fmt.Sprintf("%s%s", cm.Name, cm.Return),
+		FontSize:    fontSize,
+		IsBold:      false,
+		IsItalic:    false,
+		IsUnderline: cm.Underline,
+		Shape:       "class",
+	}
+}
+
+func (cm ClassMethod) VisibilityToken() string {
+	switch cm.Visibility {
+	case "protected":
+		return "#"
+	case "private":
+		return "-"
+	default:
+		return "+"
 	}
 }

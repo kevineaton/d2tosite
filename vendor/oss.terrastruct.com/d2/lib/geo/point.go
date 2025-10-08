@@ -187,25 +187,39 @@ func (p *Point) DistanceToLine(p1, p2 *Point) float64 {
 
 // Moves the given point by Vector
 func (start *Point) AddVector(v Vector) *Point {
-	return start.toVector().Add(v).ToPoint()
+	return start.ToVector().Add(v).ToPoint()
 }
 
 // Creates a Vector of the size between start and endpoint, pointing to endpoint
 func (start *Point) VectorTo(endpoint *Point) Vector {
-	return endpoint.toVector().Minus(start.toVector())
+	return endpoint.ToVector().Minus(start.ToVector())
 }
 
 func (p *Point) FormattedCoordinates() string {
 	return fmt.Sprintf("%d,%d", int(p.X), int(p.Y))
 }
 
-func (q *Point) OnSegment(p, r *Point) bool {
-	return (q.X <= math.Max(p.X, r.X)) && (q.X >= math.Min(p.X, r.X)) &&
-		(q.Y <= math.Max(p.Y, r.Y)) && (q.Y >= math.Min(p.Y, r.Y))
+// returns true if point p is on orthogonal segment between points a and b
+func (p *Point) OnOrthogonalSegment(a, b *Point) bool {
+	if a.X < b.X {
+		if p.X < a.X || b.X < p.X {
+			return false
+		}
+	} else if p.X < b.X || a.X < p.X {
+		return false
+	}
+	if a.Y < b.Y {
+		if p.Y < a.Y || b.Y < p.Y {
+			return false
+		}
+	} else if p.Y < b.Y || a.Y < p.Y {
+		return false
+	}
+	return true
 }
 
 // Creates a Vector pointing to point
-func (endpoint *Point) toVector() Vector {
+func (endpoint *Point) ToVector() Vector {
 	return []float64{endpoint.X, endpoint.Y}
 }
 
@@ -272,4 +286,41 @@ func (p *Point) Transpose() {
 		return
 	}
 	p.X, p.Y = p.Y, p.X
+}
+
+// point t% of the way between a and b
+func (a *Point) Interpolate(b *Point, t float64) *Point {
+	return NewPoint(
+		a.X*(1.0-t)+b.X*t,
+		a.Y*(1.0-t)+b.Y*t,
+	)
+}
+
+func (p *Point) TruncateFloat32() {
+	p.X = float64(float32(p.X))
+	p.Y = float64(float32(p.Y))
+}
+
+func (p *Point) TruncateDecimals() {
+	p.X = TruncateDecimals(p.X)
+	p.Y = TruncateDecimals(p.Y)
+}
+
+// RemovePoints returns a new Points slice without the points in toRemove
+func RemovePoints(points Points, toRemove []bool) Points {
+	newLen := len(points)
+	for _, should := range toRemove {
+		if should {
+			newLen--
+		}
+	}
+
+	without := make([]*Point, 0, newLen)
+	for i := 0; i < len(points); i++ {
+		if toRemove[i] {
+			continue
+		}
+		without = append(without, points[i])
+	}
+	return without
 }

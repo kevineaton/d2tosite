@@ -5,47 +5,64 @@ package textmeasure
 
 import (
 	"math"
-	"unicode"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/golang/freetype/truetype"
+	"github.com/rivo/uniseg"
 
 	"oss.terrastruct.com/d2/d2renderers/d2fonts"
 	"oss.terrastruct.com/d2/lib/geo"
 )
 
 const TAB_SIZE = 4
+const SIZELESS_FONT_SIZE = 0
+const CODE_LINE_HEIGHT = 1.3
 
-// ASCII is a set of all ASCII runes. These runes are codepoints from 32 to 127 inclusive.
-var ASCII []rune
+// Runes encompasses ASCII, Latin-1, and geometric shapes like black square
+var Runes []rune
 
 func init() {
-	ASCII = make([]rune, unicode.MaxASCII-32)
-	for i := range ASCII {
-		ASCII[i] = rune(32 + i)
+	// ASCII range (U+0000 to U+007F)
+	for r := rune(0x0000); r <= rune(0x007F); r++ {
+		Runes = append(Runes, r)
+	}
+
+	// Latin-1 Supplement (U+0080 to U+00FF)
+	for r := rune(0x0080); r <= rune(0x00FF); r++ {
+		Runes = append(Runes, r)
+	}
+
+	// Geometric Shapes (U+25A0 to U+25FF)
+	for r := rune(0x25A0); r <= rune(0x25FF); r++ {
+		Runes = append(Runes, r)
 	}
 }
 
 // Ruler allows for effiecient and convenient text drawing.
 //
 // To create a Ruler object, use the New constructor:
-//   txt := text.New(pixel.ZV, text.NewAtlas(face, text.ASCII))
+//
+//	txt := text.New(pixel.ZV, text.NewAtlas(face, text.ASCII))
 //
 // As suggested by the constructor, a Ruler object is always associated with one font face and a
 // fixed set of runes. For example, the Ruler we created above can draw text using the font face
 // contained in the face variable and is capable of drawing ASCII characters.
 //
 // Here we create a Ruler object which can draw ASCII and Katakana characters:
-//   txt := text.New(0, text.NewAtlas(face, text.ASCII, text.RangeTable(unicode.Katakana)))
+//
+//	txt := text.New(0, text.NewAtlas(face, text.ASCII, text.RangeTable(unicode.Katakana)))
 //
 // Similarly to IMDraw, Ruler functions as a buffer. It implements io.Writer interface, so writing
 // text to it is really simple:
-//   fmt.Print(txt, "Hello, world!")
+//
+//	fmt.Print(txt, "Hello, world!")
 //
 // Newlines, tabs and carriage returns are supported.
 //
 // Finally, if we want the written text to show up on some other Target, we can draw it:
-//   txt.Draw(target)
+//
+//	txt.Draw(target)
 //
 // Ruler exports two important fields: Orig and Dot. Dot is the position where the next character
 // will be written. Dot is automatically moved when writing to a Ruler object, but you can also
@@ -90,14 +107,15 @@ type Ruler struct {
 // will be initially set to orig.
 //
 // Here we create a Ruler capable of drawing ASCII characters using the Go Regular font.
-//   ttf, err := truetype.Parse(goregular.TTF)
-//   if err != nil {
-//       panic(err)
-//   }
-//   face := truetype.NewFace(ttf, &truetype.Options{
-//       Size: 14,
-//   })
-//   txt := text.New(orig, text.NewAtlas(face, text.ASCII))
+//
+//	ttf, err := truetype.Parse(goregular.TTF)
+//	if err != nil {
+//	    panic(err)
+//	}
+//	face := truetype.NewFace(ttf, &truetype.Options{
+//	    Size: 14,
+//	})
+//	txt := text.New(orig, text.NewAtlas(face, text.ASCII))
 func NewRuler() (*Ruler, error) {
 	origin := geo.NewPoint(0, 0)
 	r := &Ruler{
@@ -117,11 +135,12 @@ func NewRuler() (*Ruler, error) {
 				Style:  fontStyle,
 			}
 			// Note: FontFaces lookup is size-agnostic
-			if _, ok := d2fonts.FontFaces[font]; !ok {
+			face, has := d2fonts.FontFaces.Lookup(font)
+			if !has {
 				continue
 			}
 			if _, loaded := r.ttfs[font]; !loaded {
-				ttf, err := truetype.Parse(d2fonts.FontFaces[font])
+				ttf, err := truetype.Parse(face)
 				if err != nil {
 					return nil, err
 				}
@@ -135,20 +154,88 @@ func NewRuler() (*Ruler, error) {
 	return r, nil
 }
 
+func (r *Ruler) HasFontFamilyLoaded(fontFamily *d2fonts.FontFamily) bool {
+	for _, fontStyle := range d2fonts.FontStyles {
+		font := d2fonts.Font{
+			Family: *fontFamily,
+			Style:  fontStyle,
+			Size:   SIZELESS_FONT_SIZE,
+		}
+		_, ok := r.ttfs[font]
+		if !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (r *Ruler) addFontSize(font d2fonts.Font) {
 	sizeless := font
-	sizeless.Size = 0
+	sizeless.Size = SIZELESS_FONT_SIZE
 	face := truetype.NewFace(r.ttfs[sizeless], &truetype.Options{
 		Size: float64(font.Size),
 	})
-	atlas := NewAtlas(face, ASCII)
+	atlas := NewAtlas(face, Runes)
 	r.atlases[font] = atlas
 	r.lineHeights[font] = atlas.lineHeight
 	r.tabWidths[font] = atlas.glyph(' ').advance * TAB_SIZE
 }
 
+func (t *Ruler) scaleUnicode(w float64, font d2fonts.Font, s string) float64 {
+	// Weird unicode stuff is going on when this is true
+	// See https://github.com/rivo/uniseg#grapheme-clusters
+	// This method is a good-enough approximation. It overshoots, but not by much.
+	// I suspect we need to import a font with the right glyphs to get the precise measurements
+	// but Hans fonts are heavy.
+	if uniseg.GraphemeClusterCount(s) != len(s) {
+		for _, line := range strings.Split(s, "\n") {
+			lineW, _ := t.MeasurePrecise(font, line)
+			gr := uniseg.NewGraphemes(line)
+
+			mono := d2fonts.SourceCodePro.Font(font.Size, font.Style)
+			for gr.Next() {
+				if gr.Width() == 1 {
+					continue
+				}
+				// For each grapheme which doesn't have width=1, the ruler measured wrongly.
+				// So, replace the measured width with a scaled measurement of a monospace version
+				var prevRune rune
+				dot := t.Orig.Copy()
+				b := newRect()
+				for _, r := range gr.Runes() {
+					var control bool
+					dot, control = t.controlRune(r, dot, font)
+					if control {
+						continue
+					}
+
+					var bounds *rect
+					_, _, bounds, dot = t.atlases[font].DrawRune(prevRune, r, dot)
+					b = b.union(bounds)
+
+					prevRune = r
+				}
+				lineW -= b.w()
+				lineW += t.spaceWidth(mono) * float64(gr.Width())
+			}
+			w = math.Max(w, lineW)
+		}
+	}
+	return w
+}
+
+func (t *Ruler) MeasureMono(font d2fonts.Font, s string) (width, height int) {
+	originalBoundsWithDot := t.boundsWithDot
+	t.boundsWithDot = true
+	width, height = t.Measure(font, s)
+	t.boundsWithDot = originalBoundsWithDot
+	return width, height
+}
+
 func (t *Ruler) Measure(font d2fonts.Font, s string) (width, height int) {
 	w, h := t.MeasurePrecise(font, s)
+	w = t.scaleUnicode(w, font, s)
 	return int(math.Ceil(w)), int(math.Ceil(h))
 }
 

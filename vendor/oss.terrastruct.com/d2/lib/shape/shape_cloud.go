@@ -5,6 +5,7 @@ import (
 
 	"oss.terrastruct.com/d2/lib/geo"
 	"oss.terrastruct.com/d2/lib/svg"
+	"oss.terrastruct.com/util-go/go2"
 )
 
 // The percentage values of the cloud's wide inner box
@@ -29,20 +30,56 @@ const CLOUD_SQUARE_INNER_HEIGHT = 0.663
 
 type shapeCloud struct {
 	*baseShape
+	innerBoxAspectRatio *float64
 }
 
 func NewCloud(box *geo.Box) Shape {
-	return shapeCloud{
+	shape := shapeCloud{
 		baseShape: &baseShape{
 			Type: CLOUD_TYPE,
 			Box:  box,
 		},
+		innerBoxAspectRatio: go2.Pointer(0.),
+	}
+	shape.FullShape = go2.Pointer(Shape(shape))
+	return shape
+}
+
+func (s shapeCloud) GetInnerBox() *geo.Box {
+	if s.innerBoxAspectRatio != nil && *s.innerBoxAspectRatio != 0. {
+		return s.GetInnerBoxForContent(*s.innerBoxAspectRatio, 1)
+	} else {
+		return s.GetInnerBoxForContent(s.Box.Width, s.Box.Height)
 	}
 }
 
-func (s shapeCloud) GetDimensionsToFit(width, height, padding float64) (float64, float64) {
-	width += padding
-	height += padding
+// we need this since the content's aspect ratio determines which placement is used
+func (s shapeCloud) GetInnerBoxForContent(width, height float64) *geo.Box {
+	insideTL := s.GetInsidePlacement(width, height, 0, 0)
+	aspectRatio := width / height
+	// aspect ratio and position are computed with given dimensions, but final box size is determined by shape size
+	width, height = s.Box.Width, s.Box.Height
+	if aspectRatio > CLOUD_WIDE_ASPECT_BOUNDARY {
+		width *= CLOUD_WIDE_INNER_WIDTH
+		height *= CLOUD_WIDE_INNER_HEIGHT
+	} else if aspectRatio < CLOUD_TALL_ASPECT_BOUNDARY {
+		width *= CLOUD_TALL_INNER_WIDTH
+		height *= CLOUD_TALL_INNER_HEIGHT
+	} else {
+		width *= CLOUD_SQUARE_INNER_WIDTH
+		height *= CLOUD_SQUARE_INNER_HEIGHT
+	}
+	return geo.NewBox(&insideTL, width, height)
+}
+
+func (s shapeCloud) SetInnerBoxAspectRatio(aspectRatio float64) {
+	// only used for cloud
+	*s.innerBoxAspectRatio = aspectRatio
+}
+
+func (s shapeCloud) GetDimensionsToFit(width, height, paddingX, paddingY float64) (float64, float64) {
+	width += paddingX
+	height += paddingY
 	aspectRatio := width / height
 	// use the inner box with the closest aspect ratio (wide, tall, or square box)
 	if aspectRatio > CLOUD_WIDE_ASPECT_BOUNDARY {
@@ -54,18 +91,17 @@ func (s shapeCloud) GetDimensionsToFit(width, height, padding float64) (float64,
 	}
 }
 
-func (s shapeCloud) GetInsidePlacement(width, height, padding float64) geo.Point {
+func (s shapeCloud) GetInsidePlacement(width, height, paddingX, paddingY float64) geo.Point {
 	r := s.Box
-	// only using padding/2 since there's already quite a bit of padding away from the corners
-	width += padding
-	height += padding
+	width += paddingX
+	height += paddingY
 	aspectRatio := width / height
 	if aspectRatio > CLOUD_WIDE_ASPECT_BOUNDARY {
-		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_WIDE_INNER_X+padding/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_WIDE_INNER_Y+padding/2))
+		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_WIDE_INNER_X+paddingX/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_WIDE_INNER_Y+paddingY/2))
 	} else if aspectRatio < CLOUD_TALL_ASPECT_BOUNDARY {
-		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_TALL_INNER_X+padding/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_TALL_INNER_Y+padding/2))
+		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_TALL_INNER_X+paddingX/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_TALL_INNER_Y+paddingY/2))
 	} else {
-		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_SQUARE_INNER_X+padding/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_SQUARE_INNER_Y+padding/2))
+		return *geo.NewPoint(r.TopLeft.X+math.Ceil(r.Width*CLOUD_SQUARE_INNER_X+paddingX/2), r.TopLeft.Y+math.Ceil(r.Height*CLOUD_SQUARE_INNER_Y+paddingY/2))
 	}
 }
 
@@ -97,4 +133,8 @@ func (s shapeCloud) GetSVGPathData() []string {
 	return []string{
 		cloudPath(s.Box).PathData(),
 	}
+}
+
+func (s shapeCloud) GetDefaultPadding() (paddingX, paddingY float64) {
+	return defaultPadding, defaultPadding / 2
 }

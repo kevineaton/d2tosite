@@ -1,6 +1,7 @@
 package d2format
 
 import (
+	"path"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,12 @@ func (p *printer) node(n d2ast.Node) {
 		p.blockComment(n)
 	case *d2ast.Null:
 		p.sb.WriteString("null")
+	case *d2ast.Suspension:
+		if n.Value {
+			p.sb.WriteString("suspend")
+		} else {
+			p.sb.WriteString("unsuspend")
+		}
 	case *d2ast.Boolean:
 		p.sb.WriteString(strconv.FormatBool(n.Value))
 	case *d2ast.Number:
@@ -62,6 +69,8 @@ func (p *printer) node(n d2ast.Node) {
 		p.blockString(n)
 	case *d2ast.Substitution:
 		p.substitution(n)
+	case *d2ast.Import:
+		p._import(n)
 	case *d2ast.Array:
 		p.array(n)
 	case *d2ast.Map:
@@ -118,7 +127,7 @@ func (p *printer) blockComment(bc *d2ast.BlockComment) {
 }
 
 func (p *printer) interpolationBoxes(boxes []d2ast.InterpolationBox, isDoubleString bool) {
-	for _, b := range boxes {
+	for i, b := range boxes {
 		if b.Substitution != nil {
 			p.substitution(b.Substitution)
 			continue
@@ -131,6 +140,17 @@ func (p *printer) interpolationBoxes(boxes []d2ast.InterpolationBox, isDoubleStr
 				s = escapeUnquotedValue(*b.String, p.inKey)
 			}
 			b.StringRaw = &s
+		} else if i > 0 && boxes[i-1].Substitution != nil {
+			// If this string follows a substitution, we need to make sure to use
+			// the actual string content, not the raw value which might be incorrect
+			s := *b.String
+			b.StringRaw = &s
+		}
+		if !isDoubleString {
+			if _, ok := d2ast.ReservedKeywords[strings.ToLower(*b.StringRaw)]; ok {
+				s := strings.ToLower(*b.StringRaw)
+				b.StringRaw = &s
+			}
 		}
 		p.sb.WriteString(*b.StringRaw)
 	}
@@ -203,6 +223,25 @@ func (p *printer) substitution(s *d2ast.Substitution) {
 	p.sb.WriteByte('}')
 }
 
+func (p *printer) _import(i *d2ast.Import) {
+	if i.Spread {
+		p.sb.WriteString("...")
+	}
+	p.sb.WriteString("@")
+	pre := path.Clean(i.Pre)
+	if pre != "." {
+		p.sb.WriteString(pre)
+		p.sb.WriteRune('/')
+	}
+	if len(i.Path) > 0 {
+		i2 := *i
+		i2.Path = append([]*d2ast.StringBox{}, i.Path...)
+		i2.Path[0] = d2ast.RawStringBox(path.Clean(i.Path[0].Unbox().ScalarString()), true)
+		i = &i2
+	}
+	p.path(i.Path)
+}
+
 func (p *printer) array(a *d2ast.Array) {
 	p.sb.WriteByte('[')
 	if !a.Range.OneLine() {
@@ -253,10 +292,22 @@ func (p *printer) _map(m *d2ast.Map) {
 		}
 	}
 
+	boardNodes := []d2ast.MapNodeBox{}
+
 	prev := d2ast.Node(m)
 	for i := 0; i < len(m.Nodes); i++ {
 		nb := m.Nodes[i]
 		n := nb.Unbox()
+		// extract out layer, scenario, and step nodes and skip
+		if nb.IsBoardNode() {
+			boardType := nb.MapKey.Key.Path[0].Unbox().ScalarString()
+			if (boardType == "layers" || boardType == "scenarios" || boardType == "steps") &&
+				nb.MapKey.Value.Map != nil && len(nb.MapKey.Value.Map.Nodes) > 0 {
+				boardNodes = append(boardNodes, nb)
+			}
+			prev = n
+			continue
+		}
 
 		// Handle inline comments.
 		if i > 0 && (nb.Comment != nil || nb.BlockComment != nil) {
@@ -284,6 +335,23 @@ func (p *printer) _map(m *d2ast.Map) {
 		prev = n
 	}
 
+	// draw board nodes
+	for i := 0; i < len(boardNodes); i++ {
+		n := boardNodes[i].Unbox()
+		// if this board is the very first line of the file, don't add an extra newline
+		if n.GetRange().Start.Line != 0 {
+			p.sb.WriteByte('\n')
+		}
+		// if scope only has boards, don't newline the first board
+		if i != 0 || len(m.Nodes) > len(boardNodes) {
+			p.sb.WriteByte('\n')
+		}
+
+		p.sb.WriteString(p.indentStr)
+		p.node(n)
+		prev = n
+	}
+
 	if !m.IsFileMap() {
 		if !m.Range.OneLine() {
 			p.deindent()
@@ -298,6 +366,9 @@ func (p *printer) _map(m *d2ast.Map) {
 
 func (p *printer) mapKey(mk *d2ast.Key) {
 	if mk.Ampersand {
+		p.sb.WriteByte('&')
+	} else if mk.NotAmpersand {
+		p.sb.WriteByte('!')
 		p.sb.WriteByte('&')
 	}
 	if mk.Key != nil {
@@ -396,4 +467,16 @@ func (p *printer) edgeIndex(ei *d2ast.EdgeIndex) {
 		p.sb.WriteString(strconv.Itoa(*ei.Int))
 	}
 	p.sb.WriteByte(']')
+}
+
+func KeyPath(kp *d2ast.KeyPath) (ida []string) {
+	for _, s := range kp.Path {
+		// We format each string of the key to ensure the resulting strings can be parsed
+		// correctly.
+		n := &d2ast.KeyPath{
+			Path: []*d2ast.StringBox{d2ast.MakeValueBox(d2ast.RawString(s.Unbox().ScalarString(), true)).StringBox()},
+		}
+		ida = append(ida, Format(n))
+	}
+	return ida
 }
