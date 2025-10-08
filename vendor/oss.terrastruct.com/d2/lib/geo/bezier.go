@@ -5,33 +5,95 @@ package geo
 
 import (
 	"math"
-
-	"gonum.org/v1/plot/font"
-	"gonum.org/v1/plot/tools/bezier"
-	"gonum.org/v1/plot/vg"
 )
 
 // How precise should comparisons be, avoid being too precise due to floating point issues
 const PRECISION = 0.0001
 
+// Local types to replace gonum dependencies
+type bezierPoint struct {
+	X, Y float64
+}
+
+type bezierControlPoint struct {
+	Point, Control bezierPoint
+}
+
+type bezierCurveImpl []bezierControlPoint
+
+// newBezierCurveImpl creates a new bezier curve from control points
+// Implementation based on Robert D. Miller's algorithm from Graphics Gems 5
+func newBezierCurveImpl(cp ...bezierPoint) bezierCurveImpl {
+	if len(cp) == 0 {
+		return nil
+	}
+	c := make(bezierCurveImpl, len(cp))
+	for i, p := range cp {
+		c[i].Point = p
+	}
+
+	var w float64
+	for i, p := range c {
+		switch i {
+		case 0:
+			w = 1
+		case 1:
+			w = float64(len(c)) - 1
+		default:
+			w *= float64(len(c)-i) / float64(i)
+		}
+		c[i].Control.X = p.Point.X * w
+		c[i].Control.Y = p.Point.Y * w
+	}
+
+	return c
+}
+
+// pointAt returns the point at t along the curve, where 0 ≤ t ≤ 1
+func (c bezierCurveImpl) pointAt(t float64) bezierPoint {
+	c[0].Point = c[0].Control
+	u := t
+	for i, p := range c[1:] {
+		c[i+1].Point = bezierPoint{
+			X: p.Control.X * u,
+			Y: p.Control.Y * u,
+		}
+		u *= t
+	}
+
+	var (
+		t1 = 1 - t
+		tt = t1
+	)
+	p := c[len(c)-1].Point
+	for i := len(c) - 2; i >= 0; i-- {
+		p.X += c[i].Point.X * tt
+		p.Y += c[i].Point.Y * tt
+		tt *= t1
+	}
+
+	return p
+}
+
 type BezierCurve struct {
-	Curve  *bezier.Curve
+	curve  bezierCurveImpl
 	points []*Point
 }
 
 func NewBezierCurve(points []*Point) *BezierCurve {
-	internalPoints := make([]vg.Point, len(points))
+	localPoints := make([]bezierPoint, len(points))
 	for i := 0; i < len(points); i++ {
-		internalPoints[i] = vg.Point{
-			X: font.Length(points[i].X),
-			Y: font.Length(points[i].Y),
+		localPoints[i] = bezierPoint{
+			X: points[i].X,
+			Y: points[i].Y,
 		}
 	}
-	internalCurve := bezier.New(internalPoints...)
+	localCurve := newBezierCurveImpl(localPoints...)
+
 	curve := &BezierCurve{
-		Curve: &internalCurve,
+		curve:  localCurve,
+		points: points,
 	}
-	curve.points = points
 	return curve
 }
 
@@ -61,11 +123,11 @@ func (bc BezierCurve) Intersections(segment Segment) []*Point {
 }
 
 func (bc BezierCurve) At(point float64) *Point {
-	curvePoint := bc.Curve.Point(point)
-	return NewPoint(float64(curvePoint.X), float64(curvePoint.Y))
+	curvePoint := bc.curve.pointAt(point)
+	return NewPoint(curvePoint.X, curvePoint.Y)
 }
 
-//nolint
+// nolint
 func ComputeIntersections(px, py, lx, ly []float64) []*Point {
 	out := make([]*Point, 0)
 
@@ -111,7 +173,7 @@ func ComputeIntersections(px, py, lx, ly []float64) []*Point {
 	return out
 }
 
-//nolint
+// nolint
 func cubicRoots(P []float64) []float64 {
 	if PrecisionCompare(P[0], 0, PRECISION) == 0 {
 		if PrecisionCompare(P[1], 0, PRECISION) == 0 {
@@ -209,7 +271,7 @@ func cubicRoots(P []float64) []float64 {
 	return t
 }
 
-//nolint
+// nolint
 func sortSpecial(a []float64) []float64 {
 	var flip bool
 	var temp float64
@@ -235,7 +297,7 @@ func sortSpecial(a []float64) []float64 {
 	return a
 }
 
-//nolint
+// nolint
 func sgn(x float64) float64 {
 	if x < 0.0 {
 		return -1
@@ -243,7 +305,7 @@ func sgn(x float64) float64 {
 	return 1
 }
 
-//nolint
+// nolint
 func bezierCoeffs(P0, P1, P2, P3 float64) []float64 {
 	Z := make([]float64, 4)
 	Z[0] = -P0 + 3*P1 + -3*P2 + P3

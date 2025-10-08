@@ -1,6 +1,8 @@
 package d2parser
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"math/big"
@@ -9,13 +11,20 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"oss.terrastruct.com/util-go/go2"
+	tunicode "golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
 
 	"oss.terrastruct.com/d2/d2ast"
+	"oss.terrastruct.com/util-go/go2"
 )
 
 type ParseOptions struct {
-	UTF16 bool
+	// UTF16Pos would be used with input received from a browser where the browser will send the text as UTF-8 but
+	// JavaScript keeps strings in memory as UTF-16 and so needs UTF-16 indexes into the text to line up errors correctly.
+	// So you want to read UTF-8 still but adjust the indexes to pretend the input is utf16.
+	UTF16Pos bool
+
+	ParseError *ParseError
 }
 
 // Parse parses a .d2 Map in r.
@@ -26,26 +35,49 @@ type ParseOptions struct {
 // The map may be compiled via Compile even if there are errors to keep language tooling
 // operational. Though autoformat should not run.
 //
-// If UTF16Mode is true, positions will be recorded in UTF-16 codeunits as required by LSP
+// If UTF16Pos is true, positions will be recorded in UTF-16 codeunits as required by LSP
 // and browser clients. See
 // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocuments
 // TODO: update godocs
-func Parse(path string, r io.RuneReader, opts *ParseOptions) (*d2ast.Map, error) {
+func Parse(path string, r io.Reader, opts *ParseOptions) (*d2ast.Map, error) {
 	if opts == nil {
 		opts = &ParseOptions{
-			UTF16: false,
+			UTF16Pos: false,
 		}
 	}
 
 	p := &parser{
-		path:   path,
-		reader: r,
+		path: path,
 
-		utf16: opts.UTF16,
+		utf16Pos: opts.UTF16Pos,
+		err:      opts.ParseError,
+	}
+	br := bufio.NewReader(r)
+	p.reader = br
+
+	bom, err := br.Peek(2)
+	if err == nil {
+		// 0xFFFE is invalid UTF-8 so this is safe.
+		// Also a different BOM is used for UTF-8.
+		// See https://unicode.org/faq/utf_bom.html#bom4
+		if bom[0] == 0xFF && bom[1] == 0xFE {
+			p.utf16Pos = true
+
+			buf := make([]byte, br.Buffered())
+			io.ReadFull(br, buf)
+
+			mr := io.MultiReader(bytes.NewBuffer(buf), r)
+			tr := transform.NewReader(mr, tunicode.UTF16(tunicode.LittleEndian, tunicode.UseBOM).NewDecoder())
+			br.Reset(tr)
+		}
+	}
+
+	if p.err == nil {
+		p.err = &ParseError{}
 	}
 
 	m := p.parseMap(true)
-	if !p.err.empty() {
+	if !p.err.Empty() {
 		return m, p.err
 	}
 	return m, nil
@@ -54,10 +86,11 @@ func Parse(path string, r io.RuneReader, opts *ParseOptions) (*d2ast.Map, error)
 func ParseKey(key string) (*d2ast.KeyPath, error) {
 	p := &parser{
 		reader: strings.NewReader(key),
+		err:    &ParseError{},
 	}
 
 	k := p.parseKey()
-	if !p.err.empty() {
+	if !p.err.Empty() {
 		return nil, fmt.Errorf("failed to parse key %q: %w", key, p.err)
 	}
 	if k == nil {
@@ -69,10 +102,11 @@ func ParseKey(key string) (*d2ast.KeyPath, error) {
 func ParseMapKey(mapKey string) (*d2ast.Key, error) {
 	p := &parser{
 		reader: strings.NewReader(mapKey),
+		err:    &ParseError{},
 	}
 
 	mk := p.parseMapKey()
-	if !p.err.empty() {
+	if !p.err.Empty() {
 		return nil, fmt.Errorf("failed to parse map key %q: %w", mapKey, p.err)
 	}
 	if mk == nil {
@@ -84,10 +118,11 @@ func ParseMapKey(mapKey string) (*d2ast.Key, error) {
 func ParseValue(value string) (d2ast.Value, error) {
 	p := &parser{
 		reader: strings.NewReader(value),
+		err:    &ParseError{},
 	}
 
 	v := p.parseValue()
-	if !p.err.empty() {
+	if !p.err.Empty() {
 		return nil, fmt.Errorf("failed to parse value %q: %w", value, p.err)
 	}
 	if v.Unbox() == nil {
@@ -97,16 +132,17 @@ func ParseValue(value string) (d2ast.Value, error) {
 }
 
 // TODO: refactor parser to keep entire file in memory as []rune
-// 	- trivial to then convert positions
-// 	- lookahead is gone, just forward back as much as you want :)
-// 	- streaming parser isn't really helpful.
-// 	- just read into a string even and decode runes forward/back as needed
-// 	- the whole file essentially exists within the parser as the AST anyway...
+//   - trivial to then convert positions
+//   - lookahead is gone, just forward back as much as you want :)
+//   - streaming parser isn't really helpful.
+//   - just read into a string even and decode runes forward/back as needed
+//   - the whole file essentially exists within the parser as the AST anyway...
+//
 // TODO: ast struct that combines map & errors and pass that around
 type parser struct {
-	path  string
-	pos   d2ast.Position
-	utf16 bool
+	path     string
+	pos      d2ast.Position
+	utf16Pos bool
 
 	reader    io.RuneReader
 	readerPos d2ast.Position
@@ -116,33 +152,43 @@ type parser struct {
 	lookaheadPos d2ast.Position
 
 	ioerr bool
-	err   ParseError
+	err   *ParseError
 
 	inEdgeGroup bool
 
 	depth int
 }
 
-// TODO: remove ioerr, just sort (with Append) should be fine but filter non ast errors in API
 // TODO: rename to Error and make existing Error a private type errorWithRange
 type ParseError struct {
-	IOError *d2ast.Error  `json:"ioerr"`
-	Errors  []d2ast.Error `json:"errs"`
+	// Errors from globs need to be deduplicated
+	ErrorsLookup map[d2ast.Error]struct{} `json:"-"`
+	Errors       []d2ast.Error            `json:"errs"`
 }
 
-func (pe ParseError) empty() bool {
-	return pe.IOError == nil && len(pe.Errors) == 0
-}
-
-func (pe ParseError) Error() string {
-	var sb strings.Builder
-	if pe.IOError != nil {
-		sb.WriteString(pe.IOError.Error())
-		sb.WriteByte('\n')
+func Errorf(n d2ast.Node, f string, v ...interface{}) error {
+	f = "%v: " + f
+	v = append([]interface{}{n.GetRange()}, v...)
+	return d2ast.Error{
+		Range:   n.GetRange(),
+		Message: fmt.Sprintf(f, v...),
 	}
-	for _, err := range pe.Errors {
+}
+
+func (pe *ParseError) Empty() bool {
+	if pe == nil {
+		return true
+	}
+	return len(pe.Errors) == 0
+}
+
+func (pe *ParseError) Error() string {
+	var sb strings.Builder
+	for i, err := range pe.Errors {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
 		sb.WriteString(err.Error())
-		sb.WriteByte('\n')
 	}
 	return sb.String()
 }
@@ -180,14 +226,14 @@ func (p *parser) _readRune() (r rune, eof bool) {
 	if err != nil {
 		p.ioerr = true
 		if err != io.EOF {
-			p.err.IOError = &d2ast.Error{
+			p.err.Errors = append(p.err.Errors, d2ast.Error{
 				Range: d2ast.Range{
 					Path:  p.path,
 					Start: p.readerPos,
 					End:   p.readerPos,
 				},
 				Message: fmt.Sprintf("io error: %v", err),
-			}
+			})
 		}
 		p.rewind()
 		return 0, true
@@ -200,13 +246,13 @@ func (p *parser) read() (r rune, eof bool) {
 	if eof {
 		return 0, true
 	}
-	p.pos = p.pos.Advance(r, p.utf16)
+	p.pos = p.pos.Advance(r, p.utf16Pos)
 	p.lookaheadPos = p.pos
 	return r, false
 }
 
 func (p *parser) replay(r rune) {
-	p.pos = p.pos.Subtract(r, p.utf16)
+	p.pos = p.pos.Subtract(r, p.utf16Pos)
 
 	// This is more complex than it needs to be to allow reusing the buffer underlying
 	// p.lookahead.
@@ -233,7 +279,7 @@ func (p *parser) peek() (r rune, eof bool) {
 	}
 
 	p.lookahead = append(p.lookahead, r)
-	p.lookaheadPos = p.lookaheadPos.Advance(r, p.utf16)
+	p.lookaheadPos = p.lookaheadPos.Advance(r, p.utf16Pos)
 	return r, false
 }
 
@@ -305,13 +351,15 @@ func (p *parser) commit() {
 //
 // TODO: make each parse function read its delimiter and return nil if not as expected
 // TODO: lookahead *must* always be empty in between parse calls. you either commit or
-//       rewind in each function. if you don't, you pass a hint.
+//
+//	rewind in each function. if you don't, you pass a hint.
 //
 // TODO: omg we don't need two buffers, just a single lookahead and an index...
 // TODO: get rid of lookaheadPos or at least never use directly. maybe rename to beforePeekPos?
-// 		   or better yet keep positions in the lookahead buffer.
-// 		   ok so plan here is to get rid of lookaheadPos and add a rewindPos that stores
-// 		   the pos to rewind to.
+//
+//	or better yet keep positions in the lookahead buffer.
+//	ok so plan here is to get rid of lookaheadPos and add a rewindPos that stores
+//	the pos to rewind to.
 func (p *parser) rewind() {
 	if len(p.lookahead) == 0 {
 		return
@@ -342,10 +390,10 @@ func (p *parser) parseMap(isFileMap bool) *d2ast.Map {
 			Start: p.pos,
 		},
 	}
-	defer m.Range.End.From(&p.readerPos)
+	defer m.Range.End.From(&p.pos)
 
 	if !isFileMap {
-		m.Range.Start = m.Range.Start.Subtract('{', p.utf16)
+		m.Range.Start = m.Range.Start.Subtract('{', p.utf16Pos)
 		p.depth++
 		defer dec(&p.depth)
 	}
@@ -364,7 +412,7 @@ func (p *parser) parseMap(isFileMap bool) *d2ast.Map {
 			continue
 		case '}':
 			if isFileMap {
-				p.errorf(p.pos.Subtract(r, p.utf16), p.pos, "unexpected map termination character } in file map")
+				p.errorf(p.pos.Subtract(r, p.utf16Pos), p.pos, "unexpected map termination character } in file map")
 				continue
 			}
 			return m
@@ -400,7 +448,11 @@ func (p *parser) parseMap(isFileMap bool) *d2ast.Map {
 		if after != p.pos {
 			if n.Unbox() != nil {
 				if n.MapKey != nil && n.MapKey.Value.Unbox() != nil {
-					p.errorf(after, p.pos, "unexpected text after %v", n.MapKey.Value.Unbox().Type())
+					ps := ""
+					if _, ok := n.MapKey.Value.Unbox().(*d2ast.BlockString); ok {
+						ps = ". See https://d2lang.com/tour/text#advanced-block-strings."
+					}
+					p.errorf(after, p.pos, "unexpected text after %v%s", n.MapKey.Value.Unbox().Type(), ps)
 				} else {
 					p.errorf(after, p.pos, "unexpected text after %v", n.Unbox().Type())
 				}
@@ -431,17 +483,30 @@ func (p *parser) parseMapNode(r rune) d2ast.MapNodeBox {
 		box.BlockComment = p.parseBlockComment()
 		return box
 	case '.':
-		s, eof := p.peekn(3)
+		s, eof := p.peekn(2)
 		if eof {
 			break
 		}
-		if s != "..$" {
+		if s != ".." {
 			p.rewind()
 			break
 		}
-		p.commit()
-		box.Substitution = p.parseSubstitution(true)
-		return box
+		r, eof := p.peek()
+		if eof {
+			break
+		}
+		if r == '$' {
+			p.commit()
+			box.Substitution = p.parseSubstitution(true)
+			return box
+		}
+		if r == '@' {
+			p.commit()
+			box.Import = p.parseImport(true)
+			return box
+		}
+		p.rewind()
+		break
 	}
 
 	p.replay(r)
@@ -453,7 +518,7 @@ func (p *parser) parseComment() *d2ast.Comment {
 	c := &d2ast.Comment{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('#', p.utf16),
+			Start: p.pos.Subtract('#', p.utf16Pos),
 		},
 	}
 	defer c.Range.End.From(&p.pos)
@@ -510,7 +575,7 @@ func (p *parser) parseBlockComment() *d2ast.BlockComment {
 	bc := &d2ast.BlockComment{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.SubtractString(`"""`, p.utf16),
+			Start: p.pos.SubtractString(`"""`, p.utf16Pos),
 		},
 	}
 	defer bc.Range.End.From(&p.pos)
@@ -597,16 +662,27 @@ func (p *parser) parseMapKey() (mk *d2ast.Key) {
 		}
 	}()
 
-	// Check for ampersand.
+	// Check for not ampersand/@.
 	r, eof := p.peek()
 	if eof {
 		return mk
 	}
-	if r != '&' {
-		p.rewind()
-	} else {
+	if r == '!' {
+		r, eof := p.peek()
+		if eof {
+			return mk
+		}
+		if r == '&' {
+			p.commit()
+			mk.NotAmpersand = true
+		} else {
+			p.rewind()
+		}
+	} else if r == '&' {
 		p.commit()
 		mk.Ampersand = true
+	} else {
+		p.rewind()
 	}
 
 	r, eof = p.peek()
@@ -678,7 +754,7 @@ func (p *parser) parseMapKeyValue(mk *d2ast.Key) {
 	}
 	mk.Value = p.parseValue()
 	if mk.Value.Unbox() == nil {
-		p.errorf(p.pos.Subtract(':', p.utf16), p.pos, "missing value after colon")
+		p.errorf(p.pos.Subtract(':', p.utf16Pos), p.pos, "missing value after colon")
 	}
 
 	sb := mk.Value.ScalarBox()
@@ -752,7 +828,7 @@ func (p *parser) parseEdgeIndex() *d2ast.EdgeIndex {
 	ei := &d2ast.EdgeIndex{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('[', p.utf16),
+			Start: p.pos.Subtract('[', p.utf16Pos),
 		},
 	}
 	defer ei.Range.End.From(&p.pos)
@@ -780,7 +856,7 @@ func (p *parser) parseEdgeIndex() *d2ast.EdgeIndex {
 			}
 			p.commit()
 			if !unicode.IsDigit(r) {
-				p.errorf(p.pos.Subtract(r, p.utf16), p.pos, "unexpected character in edge index")
+				p.errorf(p.pos.Subtract(r, p.utf16Pos), p.pos, "unexpected character in edge index")
 				continue
 			}
 			sb.WriteRune(r)
@@ -791,7 +867,7 @@ func (p *parser) parseEdgeIndex() *d2ast.EdgeIndex {
 		p.commit()
 		ei.Glob = true
 	} else {
-		p.errorf(p.pos.Subtract(r, p.utf16), p.pos, "unexpected character in edge index")
+		p.errorf(p.pos.Subtract(r, p.utf16Pos), p.pos, "unexpected character in edge index")
 		// TODO: skip to ], maybe add a p.skipTo to skip to certain characters
 	}
 
@@ -834,8 +910,8 @@ func (p *parser) parseEdges(mk *d2ast.Key, src *d2ast.KeyPath) {
 			return
 		}
 		if src == nil {
-			p.errorf(p.lookaheadPos.Subtract(r, p.utf16), p.lookaheadPos, "connection missing source")
-			e.Range.Start = p.lookaheadPos.Subtract(r, p.utf16)
+			p.errorf(p.lookaheadPos.Subtract(r, p.utf16Pos), p.lookaheadPos, "connection missing source")
+			e.Range.Start = p.lookaheadPos.Subtract(r, p.utf16Pos)
 		}
 		p.commit()
 
@@ -902,11 +978,20 @@ func (p *parser) parseKey() (k *d2ast.KeyPath) {
 			Start: p.pos,
 		},
 	}
-	defer k.Range.End.From(&p.pos)
 
 	defer func() {
 		if len(k.Path) == 0 {
 			k = nil
+		} else {
+			k.Range.End = k.Path[len(k.Path)-1].Unbox().GetRange().End
+			for _, part := range k.Path {
+				if part.Unbox() != nil {
+					if len(part.Unbox().ScalarString()) > 518 {
+						p.errorf(k.Range.Start, k.Range.End, "key length %d exceeds maximum allowed length of 518", len(part.Unbox().ScalarString()))
+						break
+					}
+				}
+			}
 		}
 	}()
 
@@ -930,7 +1015,13 @@ func (p *parser) parseKey() (k *d2ast.KeyPath) {
 		if s == nil {
 			return k
 		}
+		if sb.UnquotedString != nil && strings.HasPrefix(s.ScalarString(), "@") {
+			p.errorf(s.GetRange().Start, s.GetRange().End, "%s is not a valid import, did you mean ...%[2]s?", s.ScalarString())
+		}
 
+		if len(k.Path) == 0 {
+			k.Range.Start = s.GetRange().Start
+		}
 		k.Path = append(k.Path, &sb)
 
 		r, newlines, eof = p.peekNotSpace()
@@ -987,9 +1078,15 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 
 	var sb strings.Builder
 	var rawb strings.Builder
+	lastPatternIndex := 0
 	defer func() {
 		sv := strings.TrimRightFunc(sb.String(), unicode.IsSpace)
 		rawv := strings.TrimRightFunc(rawb.String(), unicode.IsSpace)
+		if s.Pattern != nil {
+			if lastPatternIndex < len(sv) {
+				s.Pattern = append(s.Pattern, sv[lastPatternIndex:])
+			}
+		}
 		if sv == "" {
 			if len(s.Value) > 0 {
 				return
@@ -1002,6 +1099,14 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 		}
 		s.Value = append(s.Value, d2ast.InterpolationBox{String: &sv, StringRaw: &rawv})
 	}()
+
+	_s, eof := p.peekn(4)
+	p.rewind()
+	if !eof {
+		if _s == "...@" {
+			p.errorf(p.pos, p.pos.AdvanceString("...@", p.utf16Pos), "unquoted strings cannot begin with ...@ as that's import spread syntax")
+		}
+	}
 
 	for {
 		r, eof := p.peek()
@@ -1041,13 +1146,22 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 		}
 		if inKey {
 			switch r {
-			case ':', '.', '<', '>':
+			case ':', '.', '<', '>', '&':
 				p.rewind()
 				return s
 			case '-':
 				// TODO: need a peekNotSpace across escaped newlines
 				r2, eof := p.peek()
 				if eof {
+					return s
+				}
+				switch r2 {
+				case '\n', ';', '#', '{', '}', '[', ']':
+					p.rewind()
+					p.peek()
+					p.commit()
+					sb.WriteRune(r)
+					rawb.WriteRune(r)
 					return s
 				}
 				if r2 == '-' || r2 == '>' || r2 == '*' {
@@ -1057,20 +1171,16 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 				sb.WriteRune(r)
 				rawb.WriteRune(r)
 				r = r2
-			case '*':
-				// TODO: need a peekNotSpace across escaped newlines
-				r2, eof := p.peek()
-				if eof {
-					return s
-				}
-				if r2 == '-' {
-					p.rewind()
-					return s
-				}
-				sb.WriteRune(r)
-				rawb.WriteRune(r)
-				r = r2
 			}
+		}
+
+		if r == '*' {
+			if sb.Len() == 0 {
+				s.Pattern = append(s.Pattern, "*")
+			} else {
+				s.Pattern = append(s.Pattern, sb.String()[lastPatternIndex:], "*")
+			}
+			lastPatternIndex = len(sb.String()) + 1
 		}
 
 		p.commit()
@@ -1087,6 +1197,7 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 					rawv := rawb.String()
 					s.Value = append(s.Value, d2ast.InterpolationBox{String: &sv, StringRaw: &rawv})
 					sb.Reset()
+					rawb.Reset()
 				}
 				s.Value = append(s.Value, d2ast.InterpolationBox{Substitution: subst})
 				continue
@@ -1102,7 +1213,7 @@ func (p *parser) parseUnquotedString(inKey bool) (s *d2ast.UnquotedString) {
 
 		r2, eof := p.read()
 		if eof {
-			p.errorf(p.pos.Subtract('\\', p.utf16), p.readerPos, "unfinished escape sequence")
+			p.errorf(p.pos.Subtract('\\', p.utf16Pos), p.readerPos, "unfinished escape sequence")
 			return s
 		}
 
@@ -1154,7 +1265,7 @@ func (p *parser) parseDoubleQuotedString(inKey bool) *d2ast.DoubleQuotedString {
 	s := &d2ast.DoubleQuotedString{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('"', p.utf16),
+			Start: p.pos.Subtract('"', p.utf16Pos),
 		},
 	}
 	defer s.Range.End.From(&p.pos)
@@ -1206,7 +1317,7 @@ func (p *parser) parseDoubleQuotedString(inKey bool) *d2ast.DoubleQuotedString {
 
 		r2, eof := p.read()
 		if eof {
-			p.errorf(p.pos.Subtract('\\', p.utf16), p.readerPos, "unfinished escape sequence")
+			p.errorf(p.pos.Subtract('\\', p.utf16Pos), p.readerPos, "unfinished escape sequence")
 			p.errorf(s.Range.Start, p.readerPos, `double quoted strings must be terminated with "`)
 			return s
 		}
@@ -1225,7 +1336,7 @@ func (p *parser) parseSingleQuotedString() *d2ast.SingleQuotedString {
 	s := &d2ast.SingleQuotedString{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('\'', p.utf16),
+			Start: p.pos.Subtract('\'', p.utf16Pos),
 		},
 	}
 	defer s.Range.End.From(&p.pos)
@@ -1287,7 +1398,7 @@ func (p *parser) parseBlockString() *d2ast.BlockString {
 	bs := &d2ast.BlockString{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('|', p.utf16),
+			Start: p.pos.Subtract('|', p.utf16Pos),
 		},
 	}
 	defer bs.Range.End.From(&p.pos)
@@ -1400,7 +1511,7 @@ func (p *parser) parseArray() *d2ast.Array {
 	a := &d2ast.Array{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.Subtract('[', p.utf16),
+			Start: p.pos.Subtract('[', p.utf16Pos),
 		},
 	}
 	defer a.Range.End.From(&p.readerPos)
@@ -1472,23 +1583,37 @@ func (p *parser) parseArrayNode(r rune) d2ast.ArrayNodeBox {
 		box.BlockComment = p.parseBlockComment()
 		return box
 	case '.':
-		s, eof := p.peekn(3)
+		s, eof := p.peekn(2)
 		if eof {
 			break
 		}
-		if s != "..$" {
+		if s != ".." {
 			p.rewind()
 			break
 		}
-		p.commit()
-		box.Substitution = p.parseSubstitution(true)
-		return box
+		r, eof := p.peek()
+		if eof {
+			break
+		}
+		if r == '$' {
+			p.commit()
+			box.Substitution = p.parseSubstitution(true)
+			return box
+		}
+		if r == '@' {
+			p.commit()
+			box.Import = p.parseImport(true)
+			return box
+		}
+		p.rewind()
+		break
 	}
 
 	p.replay(r)
 	vbox := p.parseValue()
-	if vbox.UnquotedString != nil && vbox.UnquotedString.ScalarString() == "" {
-		p.errorf(p.pos, p.pos.Advance(r, p.utf16), "unquoted strings cannot start on %q", r)
+	if vbox.UnquotedString != nil && vbox.UnquotedString.ScalarString() == "" &&
+		!(len(vbox.UnquotedString.Value) > 0 && vbox.UnquotedString.Value[0].Substitution != nil) {
+		p.errorf(p.pos, p.pos.Advance(r, p.utf16Pos), "unquoted strings cannot start on %q", r)
 	}
 	box.Null = vbox.Null
 	box.Boolean = vbox.Boolean
@@ -1499,6 +1624,7 @@ func (p *parser) parseArrayNode(r rune) d2ast.ArrayNodeBox {
 	box.BlockString = vbox.BlockString
 	box.Array = vbox.Array
 	box.Map = vbox.Map
+	box.Import = vbox.Import
 	return box
 }
 
@@ -1518,6 +1644,9 @@ func (p *parser) parseValue() d2ast.ValueBox {
 		return box
 	case '{':
 		box.Map = p.parseMap(false)
+		return box
+	case '@':
+		box.Import = p.parseImport(false)
 		return box
 	}
 
@@ -1544,6 +1673,20 @@ func (p *parser) parseValue() d2ast.ValueBox {
 	if strings.EqualFold(s.ScalarString(), "null") {
 		box.Null = &d2ast.Null{
 			Range: s.Range,
+		}
+		return box
+	}
+	if strings.EqualFold(s.ScalarString(), "suspend") {
+		box.Suspension = &d2ast.Suspension{
+			Range: s.Range,
+			Value: true,
+		}
+		return box
+	}
+	if strings.EqualFold(s.ScalarString(), "unsuspend") {
+		box.Suspension = &d2ast.Suspension{
+			Range: s.Range,
+			Value: false,
 		}
 		return box
 	}
@@ -1583,14 +1726,14 @@ func (p *parser) parseSubstitution(spread bool) *d2ast.Substitution {
 	subst := &d2ast.Substitution{
 		Range: d2ast.Range{
 			Path:  p.path,
-			Start: p.pos.SubtractString("$", p.utf16),
+			Start: p.pos.SubtractString("$", p.utf16Pos),
 		},
 		Spread: spread,
 	}
 	defer subst.Range.End.From(&p.pos)
 
 	if subst.Spread {
-		subst.Range.Start = subst.Range.Start.SubtractString("...", p.utf16)
+		subst.Range.Start = subst.Range.Start.SubtractString("...", p.utf16Pos)
 	}
 
 	r, newlines, eof := p.peekNotSpace()
@@ -1627,6 +1770,46 @@ func (p *parser) parseSubstitution(spread bool) *d2ast.Substitution {
 	p.commit()
 
 	return subst
+}
+
+func (p *parser) parseImport(spread bool) *d2ast.Import {
+	imp := &d2ast.Import{
+		Range: d2ast.Range{
+			Path:  p.path,
+			Start: p.pos.SubtractString("$", p.utf16Pos),
+		},
+		Spread: spread,
+	}
+	defer imp.Range.End.From(&p.pos)
+
+	if imp.Spread {
+		imp.Range.Start = imp.Range.Start.SubtractString("...", p.utf16Pos)
+	}
+
+	var pre strings.Builder
+	for {
+		r, eof := p.peek()
+		if eof {
+			break
+		}
+		if r != '.' && r != '/' {
+			p.rewind()
+			break
+		}
+		pre.WriteRune(r)
+		p.commit()
+	}
+	imp.Pre = pre.String()
+
+	k := p.parseKey()
+	if k == nil {
+		return imp
+	}
+	if k.Path[0].UnquotedString != nil && len(k.Path) > 1 && k.Path[1].UnquotedString != nil && k.Path[1].Unbox().ScalarString() == "d2" {
+		k.Path = append(k.Path[:1], k.Path[2:]...)
+	}
+	imp.Path = k.Path
+	return imp
 }
 
 // func marshalKey(k *d2ast.Key) string {

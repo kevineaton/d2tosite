@@ -2,17 +2,28 @@ package d2svg
 
 import (
 	"fmt"
+	"html"
 	"io"
-	"strings"
+	"math"
 
 	"oss.terrastruct.com/d2/d2target"
+	"oss.terrastruct.com/d2/d2themes"
 	"oss.terrastruct.com/d2/lib/geo"
 	"oss.terrastruct.com/d2/lib/label"
+	"oss.terrastruct.com/d2/lib/svg"
 )
 
-func classHeader(box *geo.Box, text string, textWidth, textHeight, fontSize float64) string {
-	str := fmt.Sprintf(`<rect class="class_header" x="%f" y="%f" width="%f" height="%f" fill="black" />`,
-		box.TopLeft.X, box.TopLeft.Y, box.Width, box.Height)
+func classHeader(diagramHash string, shape d2target.Shape, box *geo.Box, text string, textWidth, textHeight, fontSize float64, inlineTheme *d2themes.Theme) string {
+	rectEl := d2themes.NewThemableElement("rect", inlineTheme)
+	rectEl.X, rectEl.Y = box.TopLeft.X, box.TopLeft.Y
+	rectEl.Width, rectEl.Height = box.Width, box.Height
+	rectEl.Fill = shape.Fill
+	rectEl.FillPattern = shape.FillPattern
+	rectEl.ClassName = "class_header"
+	if shape.BorderRadius != 0 {
+		rectEl.ClipPath = fmt.Sprintf("%v-%v", diagramHash, shape.ID)
+	}
+	str := rectEl.Render()
 
 	if text != "" {
 		tl := label.InsideMiddleCenter.GetPointOnBox(
@@ -22,83 +33,77 @@ func classHeader(box *geo.Box, text string, textWidth, textHeight, fontSize floa
 			textHeight,
 		)
 
-		str += fmt.Sprintf(`<text class="%s" x="%f" y="%f" style="%s">%s</text>`,
-			// TODO use monospace font
-			"text",
-			tl.X+textWidth/2,
-			tl.Y+textHeight*3/4,
-			fmt.Sprintf("text-anchor:%s;font-size:%vpx;fill:%s",
-				"middle",
-				4+fontSize,
-				"white",
-			),
-			escapeText(text),
+		textEl := d2themes.NewThemableElement("text", inlineTheme)
+		textEl.X = tl.X + textWidth/2
+		textEl.Y = tl.Y + fontSize
+		textEl.Fill = shape.GetFontColor()
+		textEl.ClassName = "text-mono"
+		textEl.Style = fmt.Sprintf(`text-anchor:%s;font-size:%vpx;`,
+			"middle", 4+fontSize,
 		)
+		textEl.Content = RenderText(text, textEl.X, textHeight)
+		str += textEl.Render()
 	}
 	return str
 }
 
-const (
-	prefixPadding = 10
-	prefixWidth   = 20
-	typePadding   = 20
-)
-
-func classRow(box *geo.Box, prefix, nameText, typeText string, fontSize float64) string {
-	// Row is made up of prefix, name, and type
-	// e.g. | + firstName   string  |
+func classRow(shape d2target.Shape, box *geo.Box, prefix, nameText, typeText string, fontSize float64, underline bool, inlineTheme *d2themes.Theme) string {
 	prefixTL := label.InsideMiddleLeft.GetPointOnBox(
 		box,
-		prefixPadding,
+		d2target.PrefixPadding,
 		box.Width,
 		fontSize,
 	)
 	typeTR := label.InsideMiddleRight.GetPointOnBox(
 		box,
-		typePadding,
+		d2target.TypePadding,
 		0,
 		fontSize,
 	)
-	accentColor := "rgb(13, 50, 178)"
 
-	return strings.Join([]string{
-		fmt.Sprintf(`<text class="text" x="%f" y="%f" style="%s">%s</text>`,
-			prefixTL.X,
-			prefixTL.Y+fontSize*3/4,
-			fmt.Sprintf("text-anchor:%s;font-size:%vpx;fill:%s", "start", fontSize, accentColor),
-			prefix,
-		),
+	textEl := d2themes.NewThemableElement("text", inlineTheme)
+	textEl.X = prefixTL.X
+	textEl.Y = prefixTL.Y + fontSize*3/4
+	textEl.Fill = shape.PrimaryAccentColor
+	textEl.ClassName = "text-mono"
+	textEl.Style = fmt.Sprintf("text-anchor:%s;font-size:%vpx", "start", fontSize)
+	textEl.Content = prefix
+	out := textEl.Render()
 
-		fmt.Sprintf(`<text class="text" x="%f" y="%f" style="%s">%s</text>`,
-			prefixTL.X+prefixWidth,
-			prefixTL.Y+fontSize*3/4,
-			fmt.Sprintf("text-anchor:%s;font-size:%vpx;fill:%s", "start", fontSize, "black"),
-			escapeText(nameText),
-		),
-
-		fmt.Sprintf(`<text class="text" x="%f" y="%f" style="%s">%s</text>`,
-			typeTR.X,
-			typeTR.Y+fontSize*3/4,
-			fmt.Sprintf("text-anchor:%s;font-size:%vpx;fill:%s", "end", fontSize, accentColor),
-			escapeText(typeText),
-		),
-	}, "\n")
-}
-
-func visibilityToken(visibility string) string {
-	switch visibility {
-	case "protected":
-		return "#"
-	case "private":
-		return "-"
-	default:
-		return "+"
+	textEl.X = prefixTL.X + d2target.PrefixWidth
+	textEl.Fill = shape.Fill
+	textEl.ClassName = "text-mono"
+	if underline {
+		textEl.ClassName += " text-underline"
 	}
+	textEl.Content = svg.EscapeText(nameText)
+	out += textEl.Render()
+
+	textEl.X = typeTR.X
+	textEl.Y = typeTR.Y + fontSize*3/4
+	textEl.Fill = shape.SecondaryAccentColor
+	textEl.ClassName = "text-mono"
+	textEl.Style = fmt.Sprintf("text-anchor:%s;font-size:%vpx", "end", fontSize)
+	textEl.Content = svg.EscapeText(typeText)
+	out += textEl.Render()
+
+	return out
 }
 
-func drawClass(writer io.Writer, targetShape d2target.Shape) {
-	fmt.Fprintf(writer, `<rect class="shape" x="%d" y="%d" width="%d" height="%d" style="%s"/>`,
-		targetShape.Pos.X, targetShape.Pos.Y, targetShape.Width, targetShape.Height, shapeStyle(targetShape))
+func drawClass(writer io.Writer, diagramHash string, targetShape d2target.Shape, inlineTheme *d2themes.Theme) {
+	el := d2themes.NewThemableElement("rect", inlineTheme)
+	el.X = float64(targetShape.Pos.X)
+	el.Y = float64(targetShape.Pos.Y)
+	el.Width = float64(targetShape.Width)
+	el.Height = float64(targetShape.Height)
+	el.Fill, el.Stroke = d2themes.ShapeTheme(targetShape)
+	el.FillPattern = targetShape.FillPattern
+	el.Style = targetShape.CSSStyle()
+	if targetShape.BorderRadius != 0 {
+		el.Rx = float64(targetShape.BorderRadius)
+		el.Ry = float64(targetShape.BorderRadius)
+	}
+	fmt.Fprint(writer, el.Render())
 
 	box := geo.NewBox(
 		geo.NewPoint(float64(targetShape.Pos.X), float64(targetShape.Pos.Y)),
@@ -106,30 +111,54 @@ func drawClass(writer io.Writer, targetShape d2target.Shape) {
 		float64(targetShape.Height),
 	)
 	rowHeight := box.Height / float64(2+len(targetShape.Class.Fields)+len(targetShape.Class.Methods))
-	headerBox := geo.NewBox(box.TopLeft, box.Width, 2*rowHeight)
+	headerBox := geo.NewBox(box.TopLeft, box.Width, math.Max(2*rowHeight, float64(targetShape.LabelHeight)+2*label.PADDING))
 
 	fmt.Fprint(writer,
-		classHeader(headerBox, targetShape.Label, float64(targetShape.LabelWidth), float64(targetShape.LabelHeight), float64(targetShape.FontSize)),
+		classHeader(diagramHash, targetShape, headerBox, targetShape.Label, float64(targetShape.LabelWidth), float64(targetShape.LabelHeight), float64(targetShape.FontSize), inlineTheme),
 	)
 
 	rowBox := geo.NewBox(box.TopLeft.Copy(), box.Width, rowHeight)
 	rowBox.TopLeft.Y += headerBox.Height
-	for _, f := range targetShape.Class.Fields {
+	for _, f := range targetShape.Fields {
 		fmt.Fprint(writer,
-			classRow(rowBox, visibilityToken(f.Visibility), f.Name, f.Type, float64(targetShape.FontSize)),
+			classRow(targetShape, rowBox, f.VisibilityToken(), f.Name, f.Type, float64(targetShape.FontSize), f.Underline, inlineTheme),
 		)
 		rowBox.TopLeft.Y += rowHeight
 	}
 
-	fmt.Fprintf(writer, `<line x1="%f" y1="%f" x2="%f" y2="%f" style="%s" />`,
-		rowBox.TopLeft.X, rowBox.TopLeft.Y,
-		rowBox.TopLeft.X+rowBox.Width, rowBox.TopLeft.Y,
-		fmt.Sprintf("stroke-width:1;stroke:%v", targetShape.Stroke))
+	lineEl := d2themes.NewThemableElement("line", inlineTheme)
 
-	for _, m := range targetShape.Class.Methods {
+	if targetShape.BorderRadius != 0 && len(targetShape.Methods) == 0 {
+		lineEl.X1, lineEl.Y1 = rowBox.TopLeft.X+float64(targetShape.BorderRadius), rowBox.TopLeft.Y
+		lineEl.X2, lineEl.Y2 = rowBox.TopLeft.X+rowBox.Width-float64(targetShape.BorderRadius), rowBox.TopLeft.Y
+	} else {
+		lineEl.X1, lineEl.Y1 = rowBox.TopLeft.X, rowBox.TopLeft.Y
+		lineEl.X2, lineEl.Y2 = rowBox.TopLeft.X+rowBox.Width, rowBox.TopLeft.Y
+	}
+
+	lineEl.Stroke = targetShape.Fill
+	lineEl.Style = "stroke-width:1"
+	fmt.Fprint(writer, lineEl.Render())
+
+	for _, m := range targetShape.Methods {
 		fmt.Fprint(writer,
-			classRow(rowBox, visibilityToken(m.Visibility), m.Name, m.Return, float64(targetShape.FontSize)),
+			classRow(targetShape, rowBox, m.VisibilityToken(), m.Name, m.Return, float64(targetShape.FontSize), m.Underline, inlineTheme),
 		)
 		rowBox.TopLeft.Y += rowHeight
+	}
+
+	if targetShape.Icon != nil && targetShape.Type != d2target.ShapeImage {
+		iconPosition := label.FromString(targetShape.IconPosition)
+		iconSize := d2target.GetIconSize(box, targetShape.IconPosition)
+
+		tl := iconPosition.GetPointOnBox(box, label.PADDING, float64(iconSize), float64(iconSize))
+
+		fmt.Fprintf(writer, `<image href="%s" x="%f" y="%f" width="%d" height="%d" />`,
+			html.EscapeString(targetShape.Icon.String()),
+			tl.X,
+			tl.Y,
+			iconSize,
+			iconSize,
+		)
 	}
 }

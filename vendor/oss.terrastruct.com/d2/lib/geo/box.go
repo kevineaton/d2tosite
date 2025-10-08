@@ -27,6 +27,28 @@ func (b *Box) Center() *Point {
 	return NewPoint(b.TopLeft.X+b.Width/2, b.TopLeft.Y+b.Height/2)
 }
 
+// Intersects returns true if the segment comes within buffer of the box
+func (b *Box) Intersects(s Segment, buffer float64) bool {
+	tl := NewPoint(b.TopLeft.X-buffer, b.TopLeft.Y-buffer)
+	tr := NewPoint(tl.X+b.Width+buffer*2, tl.Y)
+	br := NewPoint(tr.X, tr.Y+b.Height+buffer*2)
+	bl := NewPoint(tl.X, br.Y)
+
+	if p := IntersectionPoint(s.Start, s.End, tl, tr); p != nil {
+		return true
+	}
+	if p := IntersectionPoint(s.Start, s.End, tr, br); p != nil {
+		return true
+	}
+	if p := IntersectionPoint(s.Start, s.End, br, bl); p != nil {
+		return true
+	}
+	if p := IntersectionPoint(s.Start, s.End, bl, tl); p != nil {
+		return true
+	}
+	return false
+}
+
 func (b *Box) Intersections(s Segment) []*Point {
 	pts := []*Point{}
 
@@ -55,4 +77,15 @@ func (b *Box) ToString() string {
 		return ""
 	}
 	return fmt.Sprintf("{TopLeft: %s, Width: %.0f, Height: %.0f}", b.TopLeft.ToString(), b.Width, b.Height)
+}
+
+func (b *Box) Contains(p *Point) bool {
+	return !(p.X < b.TopLeft.X || b.TopLeft.X+b.Width < p.X ||
+		p.Y < b.TopLeft.Y || b.TopLeft.Y+b.Height < p.Y)
+}
+
+func (b1 Box) Overlaps(b2 Box) bool {
+	// https://silentmatt.com/rectangle-intersection/
+	return (b1.TopLeft.X < (b2.TopLeft.X + b2.Width)) && ((b1.TopLeft.X + b1.Width) > b2.TopLeft.X) &&
+		(b1.TopLeft.Y < (b2.TopLeft.Y + b2.Height)) && ((b1.TopLeft.Y + b1.Height) > b2.TopLeft.Y)
 }

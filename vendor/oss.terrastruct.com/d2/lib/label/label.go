@@ -14,41 +14,273 @@ const RIGHT_LABEL_POSITION = 3.0 / 4.0
 // This is the space between a node border and its outside label
 const PADDING = 5
 
-type Position string
+type Position int8
 
 const (
-	OutsideTopLeft   Position = "OUTSIDE_TOP_LEFT"
-	OutsideTopCenter Position = "OUTSIDE_TOP_CENTER"
-	OutsideTopRight  Position = "OUTSIDE_TOP_RIGHT"
+	Unset Position = iota
 
-	OutsideLeftTop    Position = "OUTSIDE_LEFT_TOP"
-	OutsideLeftMiddle Position = "OUTSIDE_LEFT_MIDDLE"
-	OutsideLeftBottom Position = "OUTSIDE_LEFT_BOTTOM"
+	OutsideTopLeft
+	OutsideTopCenter
+	OutsideTopRight
 
-	OutsideRightTop    Position = "OUTSIDE_RIGHT_TOP"
-	OutsideRightMiddle Position = "OUTSIDE_RIGHT_MIDDLE"
-	OutsideRightBottom Position = "OUTSIDE_RIGHT_BOTTOM"
+	OutsideLeftTop
+	OutsideLeftMiddle
+	OutsideLeftBottom
 
-	OutsideBottomLeft   Position = "OUTSIDE_BOTTOM_LEFT"
-	OutsideBottomCenter Position = "OUTSIDE_BOTTOM_CENTER"
-	OutsideBottomRight  Position = "OUTSIDE_BOTTOM_RIGHT"
+	OutsideRightTop
+	OutsideRightMiddle
+	OutsideRightBottom
 
-	InsideTopLeft   Position = "INSIDE_TOP_LEFT"
-	InsideTopCenter Position = "INSIDE_TOP_CENTER"
-	InsideTopRight  Position = "INSIDE_TOP_RIGHT"
+	OutsideBottomLeft
+	OutsideBottomCenter
+	OutsideBottomRight
 
-	InsideMiddleLeft   Position = "INSIDE_MIDDLE_LEFT"
-	InsideMiddleCenter Position = "INSIDE_MIDDLE_CENTER"
-	InsideMiddleRight  Position = "INSIDE_MIDDLE_RIGHT"
+	InsideTopLeft
+	InsideTopCenter
+	InsideTopRight
 
-	InsideBottomLeft   Position = "INSIDE_BOTTOM_LEFT"
-	InsideBottomCenter Position = "INSIDE_BOTTOM_CENTER"
-	InsideBottomRight  Position = "INSIDE_BOTTOM_RIGHT"
+	InsideMiddleLeft
+	InsideMiddleCenter
+	InsideMiddleRight
 
-	UnlockedTop    Position = "UNLOCKED_TOP"
-	UnlockedMiddle Position = "UNLOCKED_MIDDLE"
-	UnlockedBottom Position = "UNLOCKED_BOTTOM"
+	InsideBottomLeft
+	InsideBottomCenter
+	InsideBottomRight
+
+	BorderTopLeft
+	BorderTopCenter
+	BorderTopRight
+
+	BorderLeftTop
+	BorderLeftMiddle
+	BorderLeftBottom
+
+	BorderRightTop
+	BorderRightMiddle
+	BorderRightBottom
+
+	BorderBottomLeft
+	BorderBottomCenter
+	BorderBottomRight
+
+	UnlockedTop
+	UnlockedMiddle
+	UnlockedBottom
 )
+
+func FromString(s string) Position {
+	switch s {
+	case "OUTSIDE_TOP_LEFT":
+		return OutsideTopLeft
+	case "OUTSIDE_TOP_CENTER":
+		return OutsideTopCenter
+	case "OUTSIDE_TOP_RIGHT":
+		return OutsideTopRight
+
+	case "OUTSIDE_LEFT_TOP":
+		return OutsideLeftTop
+	case "OUTSIDE_LEFT_MIDDLE":
+		return OutsideLeftMiddle
+	case "OUTSIDE_LEFT_BOTTOM":
+		return OutsideLeftBottom
+
+	case "OUTSIDE_RIGHT_TOP":
+		return OutsideRightTop
+	case "OUTSIDE_RIGHT_MIDDLE":
+		return OutsideRightMiddle
+	case "OUTSIDE_RIGHT_BOTTOM":
+		return OutsideRightBottom
+
+	case "OUTSIDE_BOTTOM_LEFT":
+		return OutsideBottomLeft
+	case "OUTSIDE_BOTTOM_CENTER":
+		return OutsideBottomCenter
+	case "OUTSIDE_BOTTOM_RIGHT":
+		return OutsideBottomRight
+
+	case "INSIDE_TOP_LEFT":
+		return InsideTopLeft
+	case "INSIDE_TOP_CENTER":
+		return InsideTopCenter
+	case "INSIDE_TOP_RIGHT":
+		return InsideTopRight
+
+	case "INSIDE_MIDDLE_LEFT":
+		return InsideMiddleLeft
+	case "INSIDE_MIDDLE_CENTER":
+		return InsideMiddleCenter
+	case "INSIDE_MIDDLE_RIGHT":
+		return InsideMiddleRight
+
+	case "INSIDE_BOTTOM_LEFT":
+		return InsideBottomLeft
+	case "INSIDE_BOTTOM_CENTER":
+		return InsideBottomCenter
+	case "INSIDE_BOTTOM_RIGHT":
+		return InsideBottomRight
+
+	case "BORDER_TOP_LEFT":
+		return BorderTopLeft
+	case "BORDER_TOP_CENTER":
+		return BorderTopCenter
+	case "BORDER_TOP_RIGHT":
+		return BorderTopRight
+
+	case "BORDER_LEFT_TOP":
+		return BorderLeftTop
+	case "BORDER_LEFT_MIDDLE":
+		return BorderLeftMiddle
+	case "BORDER_LEFT_BOTTOM":
+		return BorderLeftBottom
+
+	case "BORDER_RIGHT_TOP":
+		return BorderRightTop
+	case "BORDER_RIGHT_MIDDLE":
+		return BorderRightMiddle
+	case "BORDER_RIGHT_BOTTOM":
+		return BorderRightBottom
+
+	case "BORDER_BOTTOM_LEFT":
+		return BorderBottomLeft
+	case "BORDER_BOTTOM_CENTER":
+		return BorderBottomCenter
+	case "BORDER_BOTTOM_RIGHT":
+		return BorderBottomRight
+
+	case "UNLOCKED_TOP":
+		return UnlockedTop
+	case "UNLOCKED_MIDDLE":
+		return UnlockedMiddle
+	case "UNLOCKED_BOTTOM":
+		return UnlockedBottom
+	default:
+		return Unset
+	}
+}
+
+func (position Position) String() string {
+	switch position {
+	case OutsideTopLeft:
+		return "OUTSIDE_TOP_LEFT"
+	case OutsideTopCenter:
+		return "OUTSIDE_TOP_CENTER"
+	case OutsideTopRight:
+		return "OUTSIDE_TOP_RIGHT"
+
+	case OutsideLeftTop:
+		return "OUTSIDE_LEFT_TOP"
+	case OutsideLeftMiddle:
+		return "OUTSIDE_LEFT_MIDDLE"
+	case OutsideLeftBottom:
+		return "OUTSIDE_LEFT_BOTTOM"
+
+	case OutsideRightTop:
+		return "OUTSIDE_RIGHT_TOP"
+	case OutsideRightMiddle:
+		return "OUTSIDE_RIGHT_MIDDLE"
+	case OutsideRightBottom:
+		return "OUTSIDE_RIGHT_BOTTOM"
+
+	case OutsideBottomLeft:
+		return "OUTSIDE_BOTTOM_LEFT"
+	case OutsideBottomCenter:
+		return "OUTSIDE_BOTTOM_CENTER"
+	case OutsideBottomRight:
+		return "OUTSIDE_BOTTOM_RIGHT"
+
+	case InsideTopLeft:
+		return "INSIDE_TOP_LEFT"
+	case InsideTopCenter:
+		return "INSIDE_TOP_CENTER"
+	case InsideTopRight:
+		return "INSIDE_TOP_RIGHT"
+
+	case InsideMiddleLeft:
+		return "INSIDE_MIDDLE_LEFT"
+	case InsideMiddleCenter:
+		return "INSIDE_MIDDLE_CENTER"
+	case InsideMiddleRight:
+		return "INSIDE_MIDDLE_RIGHT"
+
+	case InsideBottomLeft:
+		return "INSIDE_BOTTOM_LEFT"
+	case InsideBottomCenter:
+		return "INSIDE_BOTTOM_CENTER"
+	case InsideBottomRight:
+		return "INSIDE_BOTTOM_RIGHT"
+
+	case BorderTopLeft:
+		return "BORDER_TOP_LEFT"
+	case BorderTopCenter:
+		return "BORDER_TOP_CENTER"
+	case BorderTopRight:
+		return "BORDER_TOP_RIGHT"
+
+	case BorderLeftTop:
+		return "BORDER_LEFT_TOP"
+	case BorderLeftMiddle:
+		return "BORDER_LEFT_MIDDLE"
+	case BorderLeftBottom:
+		return "BORDER_LEFT_BOTTOM"
+
+	case BorderRightTop:
+		return "BORDER_RIGHT_TOP"
+	case BorderRightMiddle:
+		return "BORDER_RIGHT_MIDDLE"
+	case BorderRightBottom:
+		return "BORDER_RIGHT_BOTTOM"
+
+	case BorderBottomLeft:
+		return "BORDER_BOTTOM_LEFT"
+	case BorderBottomCenter:
+		return "BORDER_BOTTOM_CENTER"
+	case BorderBottomRight:
+		return "BORDER_BOTTOM_RIGHT"
+
+	case UnlockedTop:
+		return "UNLOCKED_TOP"
+	case UnlockedMiddle:
+		return "UNLOCKED_MIDDLE"
+	case UnlockedBottom:
+		return "UNLOCKED_BOTTOM"
+
+	default:
+		return ""
+	}
+}
+
+func (position Position) IsShapePosition() bool {
+	switch position {
+	case OutsideTopLeft, OutsideTopCenter, OutsideTopRight,
+		OutsideBottomLeft, OutsideBottomCenter, OutsideBottomRight,
+		OutsideLeftTop, OutsideLeftMiddle, OutsideLeftBottom,
+		OutsideRightTop, OutsideRightMiddle, OutsideRightBottom,
+
+		InsideTopLeft, InsideTopCenter, InsideTopRight,
+		InsideMiddleLeft, InsideMiddleCenter, InsideMiddleRight,
+		InsideBottomLeft, InsideBottomCenter, InsideBottomRight,
+
+		BorderTopLeft, BorderTopCenter, BorderTopRight,
+		BorderLeftTop, BorderLeftMiddle, BorderLeftBottom,
+		BorderRightTop, BorderRightMiddle, BorderRightBottom,
+		BorderBottomLeft, BorderBottomCenter, BorderBottomRight:
+		return true
+	default:
+		return false
+	}
+}
+
+func (position Position) IsEdgePosition() bool {
+	switch position {
+	case OutsideTopLeft, OutsideTopCenter, OutsideTopRight,
+		InsideMiddleLeft, InsideMiddleCenter, InsideMiddleRight,
+		OutsideBottomLeft, OutsideBottomCenter, OutsideBottomRight,
+		UnlockedTop, UnlockedMiddle, UnlockedBottom:
+		return true
+	default:
+		return false
+	}
+}
 
 func (position Position) IsOutside() bool {
 	switch position {
@@ -65,6 +297,18 @@ func (position Position) IsOutside() bool {
 func (position Position) IsUnlocked() bool {
 	switch position {
 	case UnlockedTop, UnlockedMiddle, UnlockedBottom:
+		return true
+	default:
+		return false
+	}
+}
+
+func (position Position) IsBorder() bool {
+	switch position {
+	case BorderTopLeft, BorderTopCenter, BorderTopRight,
+		BorderLeftTop, BorderLeftMiddle, BorderLeftBottom,
+		BorderRightTop, BorderRightMiddle, BorderRightBottom,
+		BorderBottomLeft, BorderBottomCenter, BorderBottomRight:
 		return true
 	default:
 		return false
@@ -131,6 +375,34 @@ func (position Position) Mirrored() Position {
 	case InsideBottomRight:
 		return InsideTopLeft
 
+	case BorderTopLeft:
+		return BorderBottomRight
+	case BorderTopCenter:
+		return BorderBottomCenter
+	case BorderTopRight:
+		return BorderBottomLeft
+
+	case BorderLeftTop:
+		return BorderRightBottom
+	case BorderLeftMiddle:
+		return BorderRightMiddle
+	case BorderLeftBottom:
+		return BorderRightTop
+
+	case BorderRightTop:
+		return BorderLeftBottom
+	case BorderRightMiddle:
+		return BorderLeftMiddle
+	case BorderRightBottom:
+		return BorderLeftTop
+
+	case BorderBottomLeft:
+		return BorderTopRight
+	case BorderBottomCenter:
+		return BorderTopCenter
+	case BorderBottomRight:
+		return BorderTopLeft
+
 	case UnlockedTop:
 		return UnlockedBottom
 	case UnlockedBottom:
@@ -139,7 +411,7 @@ func (position Position) Mirrored() Position {
 		return UnlockedMiddle
 
 	default:
-		return ""
+		return Unset
 	}
 }
 
@@ -217,13 +489,54 @@ func (labelPosition Position) GetPointOnBox(box *geo.Box, padding, width, height
 	case InsideBottomRight:
 		p.X += box.Width - width - padding
 		p.Y += box.Height - height - padding
+
+	case BorderTopLeft:
+		p.X += padding
+		p.Y -= height / 2
+	case BorderTopCenter:
+		p.X = boxCenter.X - width/2
+		p.Y -= height / 2
+	case BorderTopRight:
+		p.X += box.Width - width - padding
+		p.Y -= height / 2
+
+	case BorderLeftTop:
+		p.X -= width / 2
+		p.Y += padding
+	case BorderLeftMiddle:
+		p.X -= width / 2
+		p.Y = boxCenter.Y - height/2
+	case BorderLeftBottom:
+		p.X -= width / 2
+		p.Y += box.Height - height - padding
+
+	case BorderRightTop:
+		p.X += box.Width - width/2
+		p.Y += padding
+	case BorderRightMiddle:
+		p.X += box.Width - width/2
+		p.Y = boxCenter.Y - height/2
+	case BorderRightBottom:
+		p.X += box.Width - width/2
+		p.Y += box.Height - height - padding
+
+	case BorderBottomLeft:
+		p.X += padding
+		p.Y += box.Height - height/2
+	case BorderBottomCenter:
+		p.X = boxCenter.X - width/2
+		p.Y += box.Height - height/2
+	case BorderBottomRight:
+		p.X += box.Width - width - padding
+		p.Y += box.Height - height/2
 	}
 
 	return p
 }
 
 // return the top left point of a width x height label at the given label position on the route
-func (labelPosition Position) GetPointOnRoute(route geo.Route, strokeWidth, labelPercentage, width, height float64) *geo.Point {
+// also return the index of the route segment that point is on
+func (labelPosition Position) GetPointOnRoute(route geo.Route, strokeWidth, labelPercentage, width, height float64) (point *geo.Point, index int) {
 	totalLength := route.Length()
 	leftPosition := LEFT_LABEL_POSITION * totalLength
 	centerPosition := CENTER_LABEL_POSITION * totalLength
@@ -266,17 +579,17 @@ func (labelPosition Position) GetPointOnRoute(route geo.Route, strokeWidth, labe
 		offsetX := strokeWidth/2 + float64(PADDING) + width/2
 		offsetY := strokeWidth/2 + float64(PADDING) + height/2
 
-		return geo.NewPoint(chopPrecision(basePoint.X+normalX*offsetX), chopPrecision(basePoint.Y+normalY*offsetY))
+		return geo.NewPoint(basePoint.X+normalX*offsetX, basePoint.Y+normalY*offsetY)
 	}
 
 	var labelCenter *geo.Point
 	switch labelPosition {
 	case InsideMiddleLeft:
-		labelCenter, _ = route.GetPointAtDistance(leftPosition)
+		labelCenter, index = route.GetPointAtDistance(leftPosition)
 	case InsideMiddleCenter:
-		labelCenter, _ = route.GetPointAtDistance(centerPosition)
+		labelCenter, index = route.GetPointAtDistance(centerPosition)
 	case InsideMiddleRight:
-		labelCenter, _ = route.GetPointAtDistance(rightPosition)
+		labelCenter, index = route.GetPointAtDistance(rightPosition)
 
 	case OutsideTopLeft:
 		basePoint, index := route.GetPointAtDistance(leftPosition)
@@ -302,20 +615,26 @@ func (labelPosition Position) GetPointOnRoute(route geo.Route, strokeWidth, labe
 		basePoint, index := route.GetPointAtDistance(unlockedPosition)
 		labelCenter = getOffsetLabelPosition(basePoint, route[index], route[index+1], true)
 	case UnlockedMiddle:
-		labelCenter, _ = route.GetPointAtDistance(unlockedPosition)
+		labelCenter, index = route.GetPointAtDistance(unlockedPosition)
 	case UnlockedBottom:
 		basePoint, index := route.GetPointAtDistance(unlockedPosition)
 		labelCenter = getOffsetLabelPosition(basePoint, route[index], route[index+1], false)
 	default:
-		return nil
+		return nil, -1
 	}
 	// convert from center to top left
-	labelCenter.X -= chopPrecision(width / 2)
-	labelCenter.Y -= chopPrecision(height / 2)
-	return labelCenter
+	labelCenter.X = chopPrecision(labelCenter.X - width/2)
+	labelCenter.Y = chopPrecision(labelCenter.Y - height/2)
+	return labelCenter, index
 }
 
 // TODO probably use math.Big
 func chopPrecision(f float64) float64 {
-	return math.Round(f*10000) / 10000
+	// bring down to float32 precision before rounding for consistency across architectures
+	result := math.Round(float64(float32(f*10000)) / 10000)
+	// Ensure negative zero becomes positive zero
+	if result == 0 {
+		return 0
+	}
+	return result
 }

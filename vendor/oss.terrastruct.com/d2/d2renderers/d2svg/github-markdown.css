@@ -20,29 +20,13 @@
   tab-size: 4;
 }
 
-/* based on https://github.com/sindresorhus/github-markdown-css */
-.md {
-  color-scheme: light;
-  --color-fg-default: #24292f;
-  --color-fg-muted: #57606a;
-  --color-fg-subtle: #6e7781;
-  --color-canvas-default: #ffffff;
-  --color-canvas-subtle: #f6f8fa;
-  --color-border-default: #d0d7de;
-  --color-border-muted: hsla(210, 18%, 87%, 1);
-  --color-neutral-muted: rgba(175, 184, 193, 0.2);
-  --color-accent-fg: #0969da;
-  --color-accent-emphasis: #0969da;
-  --color-attention-subtle: #fff8c5;
-  --color-danger-fg: #cf222e;
-}
+/* variables are provided in d2renderers/d2svg/d2svg.go */
 
 .md {
   -ms-text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
   margin: 0;
-  color: var(--color-fg-default);
-  background-color: var(--color-canvas-default);
+  background-color: transparent; /* we don't want to define the background color */
   font-family: "font-regular";
   font-size: 16px;
   line-height: 1.5;
@@ -85,7 +69,6 @@
 
 .md h1 {
   margin: 0.67em 0;
-  font-weight: 600;
   padding-bottom: 0.3em;
   font-size: 2em;
   border-bottom: 1px solid var(--color-border-muted);
@@ -255,34 +238,30 @@
 .md h6 {
   margin-top: 24px;
   margin-bottom: 16px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.25;
+  font-family: "font-semibold";
 }
 
 .md h2 {
-  font-weight: 600;
   padding-bottom: 0.3em;
   font-size: 1.5em;
   border-bottom: 1px solid var(--color-border-muted);
 }
 
 .md h3 {
-  font-weight: 600;
   font-size: 1.25em;
 }
 
 .md h4 {
-  font-weight: 600;
   font-size: 1em;
 }
 
 .md h5 {
-  font-weight: 600;
   font-size: 0.875em;
 }
 
 .md h6 {
-  font-weight: 600;
   font-size: 0.85em;
   color: var(--color-fg-muted);
 }
@@ -479,7 +458,7 @@
   margin-top: 16px;
   font-size: 1em;
   font-style: italic;
-  font-weight: 600;
+  font-family: "font-semibold";
 }
 
 .md dl dd {
@@ -488,7 +467,7 @@
 }
 
 .md table th {
-  font-weight: 600;
+  font-family: "font-semibold";
 }
 
 .md table th,
@@ -691,7 +670,7 @@
 }
 
 .md .csv-data th {
-  font-weight: 600;
+  font-family: "font-semibold";
   background: var(--color-canvas-subtle);
   border-top: 0;
 }

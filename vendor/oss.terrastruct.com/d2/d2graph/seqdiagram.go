@@ -1,9 +1,11 @@
 package d2graph
 
-import "oss.terrastruct.com/d2/d2target"
+import (
+	"oss.terrastruct.com/d2/d2target"
+)
 
 func (obj *Object) IsSequenceDiagram() bool {
-	return obj != nil && obj.Attributes.Shape.Value == d2target.ShapeSequenceDiagram
+	return obj != nil && obj.Shape.Value == d2target.ShapeSequenceDiagram
 }
 
 func (obj *Object) OuterSequenceDiagram() *Object {
@@ -65,7 +67,7 @@ func (obj *Object) ContainsAnyObject(objects []*Object) bool {
 
 func (o *Object) ContainedBy(obj *Object) bool {
 	for _, ref := range o.References {
-		curr := ref.UnresolvedScopeObj
+		curr := ref.ScopeObj
 		for curr != nil {
 			if curr == obj {
 				return true
@@ -96,4 +98,13 @@ func (e *Edge) ContainedBy(obj *Object) bool {
 		}
 	}
 	return false
+}
+
+func (e *Edge) GetGroup() *Object {
+	for _, ref := range e.References {
+		if ref.ScopeObj.IsSequenceDiagramGroup() {
+			return ref.ScopeObj
+		}
+	}
+	return nil
 }

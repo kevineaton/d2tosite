@@ -1,6 +1,8 @@
 package goja
 
 import (
+	"math/big"
+
 	"github.com/dop251/goja/ast"
 	"github.com/dop251/goja/file"
 	"github.com/dop251/goja/token"
@@ -113,6 +115,17 @@ type compiledIdentifierExpr struct {
 	name unistring.String
 }
 
+type compiledAwaitExpression struct {
+	baseCompiledExpr
+	arg compiledExpr
+}
+
+type compiledYieldExpression struct {
+	baseCompiledExpr
+	arg      compiledExpr
+	delegate bool
+}
+
 type funcType uint8
 
 const (
@@ -137,6 +150,8 @@ type compiledFunctionLiteral struct {
 	homeObjOffset   uint32
 	typ             funcType
 	isExpr          bool
+
+	isAsync, isGenerator bool
 }
 
 type compiledBracketExpr struct {
@@ -221,7 +236,7 @@ type compiledOptional struct {
 func (e *defaultDeleteExpr) emitGetter(putOnStack bool) {
 	e.expr.emitGetter(false)
 	if putOnStack {
-		e.c.emit(loadVal(e.c.p.defineLiteralValue(valueTrue)))
+		e.c.emitLiteralValue(valueTrue)
 	}
 }
 
@@ -303,6 +318,19 @@ func (c *compiler) compileExpression(v ast.Expression) compiledExpr {
 		}
 		r.init(c, v.Idx0())
 		return r
+	case *ast.AwaitExpression:
+		r := &compiledAwaitExpression{
+			arg: c.compileExpression(v.Argument),
+		}
+		r.init(c, v.Await)
+		return r
+	case *ast.YieldExpression:
+		r := &compiledYieldExpression{
+			arg:      c.compileExpression(v.Argument),
+			delegate: v.Delegate,
+		}
+		r.init(c, v.Yield)
+		return r
 	default:
 		c.assert(false, int(v.Idx0())-1, "Unknown expression type: %T", v)
 		panic("unreachable")
@@ -347,7 +375,7 @@ func (e *baseCompiledExpr) addSrcMap() {
 func (e *constantExpr) emitGetter(putOnStack bool) {
 	if putOnStack {
 		e.addSrcMap()
-		e.c.emit(loadVal(e.c.p.defineLiteralValue(e.val)))
+		e.c.emitLiteralValue(e.val)
 	}
 }
 
@@ -878,7 +906,7 @@ func (e *compiledSuperBracketExpr) deleteExpr() compiledExpr {
 func (c *compiler) checkConstantString(expr compiledExpr) (unistring.String, bool) {
 	if expr.constant() {
 		if val, ex := c.evalConst(expr); ex == nil {
-			if s, ok := val.(valueString); ok {
+			if s, ok := val.(String); ok {
 				return s.string(), true
 			}
 		}
@@ -945,6 +973,7 @@ func (e *compiledDotExpr) emitRef() {
 func (e *compiledDotExpr) emitSetter(valueExpr compiledExpr, putOnStack bool) {
 	e.left.emitGetter(true)
 	valueExpr.emitGetter(true)
+	e.addSrcMap()
 	if e.c.scope.strict {
 		if putOnStack {
 			e.c.emit(setPropStrict(e.name))
@@ -1234,7 +1263,7 @@ func (e *compiledAssignExpr) emitGetter(putOnStack bool) {
 
 func (e *compiledLiteral) emitGetter(putOnStack bool) {
 	if putOnStack {
-		e.c.emit(loadVal(e.c.p.defineLiteralValue(e.val)))
+		e.c.emitLiteralValue(e.val)
 	}
 }
 
@@ -1245,15 +1274,15 @@ func (e *compiledLiteral) constant() bool {
 func (e *compiledTemplateLiteral) emitGetter(putOnStack bool) {
 	if e.tag == nil {
 		if len(e.elements) == 0 {
-			e.c.emit(loadVal(e.c.p.defineLiteralValue(stringEmpty)))
+			e.c.emitLiteralString(stringEmpty)
 		} else {
 			tail := e.elements[len(e.elements)-1].Parsed
 			if len(e.elements) == 1 {
-				e.c.emit(loadVal(e.c.p.defineLiteralValue(stringValueFromRaw(tail))))
+				e.c.emitLiteralString(stringValueFromRaw(tail))
 			} else {
 				stringCount := 0
 				if head := e.elements[0].Parsed; head != "" {
-					e.c.emit(loadVal(e.c.p.defineLiteralValue(stringValueFromRaw(head))))
+					e.c.emitLiteralString(stringValueFromRaw(head))
 					stringCount++
 				}
 				e.expressions[0].emitGetter(true)
@@ -1261,7 +1290,7 @@ func (e *compiledTemplateLiteral) emitGetter(putOnStack bool) {
 				stringCount++
 				for i := 1; i < len(e.elements)-1; i++ {
 					if elt := e.elements[i].Parsed; elt != "" {
-						e.c.emit(loadVal(e.c.p.defineLiteralValue(stringValueFromRaw(elt))))
+						e.c.emitLiteralString(stringValueFromRaw(elt))
 						stringCount++
 					}
 					e.expressions[i].emitGetter(true)
@@ -1269,7 +1298,7 @@ func (e *compiledTemplateLiteral) emitGetter(putOnStack bool) {
 					stringCount++
 				}
 				if tail != "" {
-					e.c.emit(loadVal(e.c.p.defineLiteralValue(stringValueFromRaw(tail))))
+					e.c.emitLiteralString(stringValueFromRaw(tail))
 					stringCount++
 				}
 				e.c.emit(concatStrings(stringCount))
@@ -1346,8 +1375,9 @@ func (e *compiledFunctionLiteral) compile() (prg *Program, name unistring.String
 	savedPrg := e.c.p
 	preambleLen := 8 // enter, boxThis, loadStack(0), initThis, createArgs, set, loadCallee, init
 	e.c.p = &Program{
-		src:  e.c.p.src,
-		code: e.c.newCode(preambleLen, 16),
+		src:    e.c.p.src,
+		code:   e.c.newCode(preambleLen, 16),
+		srcMap: []srcMapItem{{srcPos: e.offset}},
 	}
 	e.c.newScope()
 	s := e.c.scope
@@ -1553,6 +1583,9 @@ func (e *compiledFunctionLiteral) compile() (prg *Program, name unistring.String
 	}
 
 	e.c.compileFunctions(funcs)
+	if e.isGenerator {
+		e.c.emit(yieldEmpty)
+	}
 	e.c.compileStatements(body, false)
 
 	var last ast.Statement
@@ -1702,6 +1735,7 @@ func (e *compiledFunctionLiteral) compile() (prg *Program, name unistring.String
 		}
 	}
 	code[delta] = enter
+	e.c.p.srcMap[0].pc = delta
 	s.trimCode(delta)
 
 	strict = s.strict
@@ -1720,11 +1754,31 @@ func (e *compiledFunctionLiteral) emitGetter(putOnStack bool) {
 	p, name, length, strict := e.compile()
 	switch e.typ {
 	case funcArrow:
-		e.c.emit(&newArrowFunc{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}})
+		if e.isAsync {
+			e.c.emit(&newAsyncArrowFunc{newArrowFunc: newArrowFunc{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}}})
+		} else {
+			e.c.emit(&newArrowFunc{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}})
+		}
 	case funcMethod, funcClsInit:
-		e.c.emit(&newMethod{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}, homeObjOffset: e.homeObjOffset})
+		if e.isAsync {
+			e.c.emit(&newAsyncMethod{newMethod: newMethod{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}, homeObjOffset: e.homeObjOffset}})
+		} else {
+			if e.isGenerator {
+				e.c.emit(&newGeneratorMethod{newMethod: newMethod{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}, homeObjOffset: e.homeObjOffset}})
+			} else {
+				e.c.emit(&newMethod{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}, homeObjOffset: e.homeObjOffset})
+			}
+		}
 	case funcRegular:
-		e.c.emit(&newFunc{prg: p, length: length, name: name, source: e.source, strict: strict})
+		if e.isAsync {
+			e.c.emit(&newAsyncFunc{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}})
+		} else {
+			if e.isGenerator {
+				e.c.emit(&newGeneratorFunc{newFunc: newFunc{prg: p, length: length, name: name, source: e.source, strict: strict}})
+			} else {
+				e.c.emit(&newFunc{prg: p, length: length, name: name, source: e.source, strict: strict})
+			}
+		}
 	default:
 		e.c.throwSyntaxError(e.offset, "Unsupported func type: %v", e.typ)
 	}
@@ -1736,7 +1790,11 @@ func (e *compiledFunctionLiteral) emitGetter(putOnStack bool) {
 func (c *compiler) compileFunctionLiteral(v *ast.FunctionLiteral, isExpr bool) *compiledFunctionLiteral {
 	strictBody := c.isStrictStatement(v.Body)
 	if v.Name != nil && (c.scope.strict || strictBody != nil) {
+		c.checkIdentifierName(v.Name.Name, int(v.Name.Idx)-1)
 		c.checkIdentifierLName(v.Name.Name, int(v.Name.Idx)-1)
+	}
+	if v.Async && v.Generator {
+		c.throwSyntaxError(int(v.Function)-1, "Async generators are not supported yet")
 	}
 	r := &compiledFunctionLiteral{
 		name:            v.Name,
@@ -1747,6 +1805,8 @@ func (c *compiler) compileFunctionLiteral(v *ast.FunctionLiteral, isExpr bool) *
 		isExpr:          isExpr,
 		typ:             funcRegular,
 		strict:          strictBody,
+		isAsync:         v.Async,
+		isGenerator:     v.Generator,
 	}
 	r.init(c, v.Idx0())
 	return r
@@ -2079,7 +2139,7 @@ func (e *compiledClassLiteral) emitGetter(putOnStack bool) {
 
 	if (clsBinding != nil && clsBinding.useCount() > 0) || s.dynLookup {
 		if clsBinding != nil {
-			// Because this block may be in the middle of an expression, it's initial stack position
+			// Because this block may be in the middle of an expression, its initial stack position
 			// cannot be known, and therefore it may not have any stack variables.
 			// Note, because clsBinding would be accessed through a function, it should already be in stash,
 			// this is just to make sure.
@@ -2182,7 +2242,7 @@ func (e *compiledClassLiteral) compileFieldsAndStaticBlocks(elements []clsElemen
 			}
 		}
 	}
-	e.c.emit(halt)
+	//e.c.emit(halt)
 	if s.isDynamic() || thisBinding.useCount() > 0 {
 		if s.isDynamic() || thisBinding.inStash {
 			thisBinding.emitInitAt(1)
@@ -2261,6 +2321,7 @@ func (c *compiler) compileArrowFunctionLiteral(v *ast.ArrowFunctionLiteral) *com
 		isExpr:          true,
 		typ:             funcArrow,
 		strict:          strictBody,
+		isAsync:         v.Async,
 	}
 	r.init(c, v.Idx0())
 	return r
@@ -2387,11 +2448,11 @@ func (c *compiler) emitThrow(v Value) {
 	if o, ok := v.(*Object); ok {
 		t := nilSafe(o.self.getStr("name", nil)).toString().String()
 		switch t {
-		case "TypeError":
+		case "TypeError", "RangeError":
 			c.emit(loadDynamic(t))
 			msg := o.self.getStr("message", nil)
 			if msg != nil {
-				c.emit(loadVal(c.p.defineLiteralValue(msg)))
+				c.emitLiteralValue(msg)
 				c.emit(_new(1))
 			} else {
 				c.emit(_new(0))
@@ -2408,7 +2469,7 @@ func (c *compiler) emitConst(expr compiledExpr, putOnStack bool) {
 	v, ex := c.evalConst(expr)
 	if ex == nil {
 		if putOnStack {
-			c.emit(loadVal(c.p.defineLiteralValue(v)))
+			c.emitLiteralValue(v)
 		}
 	} else {
 		c.emitThrow(ex.val)
@@ -2425,14 +2486,15 @@ func (c *compiler) evalConst(expr compiledExpr) (Value, *Exception) {
 	var savedPrg *Program
 	createdPrg := false
 	if c.evalVM.prg == nil {
-		c.evalVM.prg = &Program{}
+		c.evalVM.prg = &Program{
+			src: c.p.src,
+		}
 		savedPrg = c.p
 		c.p = c.evalVM.prg
 		createdPrg = true
 	}
 	savedPc := len(c.p.code)
 	expr.emitGetter(true)
-	c.emit(halt)
 	c.evalVM.pc = savedPc
 	ex := c.evalVM.runTry()
 	if createdPrg {
@@ -2573,7 +2635,7 @@ func (e *compiledLogicalOr) emitGetter(putOnStack bool) {
 				e.c.emitExpr(e.right, putOnStack)
 			} else {
 				if putOnStack {
-					e.c.emit(loadVal(e.c.p.defineLiteralValue(v)))
+					e.c.emitLiteralValue(v)
 				}
 			}
 		} else {
@@ -2614,7 +2676,7 @@ func (e *compiledCoalesce) emitGetter(putOnStack bool) {
 				e.c.emitExpr(e.right, putOnStack)
 			} else {
 				if putOnStack {
-					e.c.emit(loadVal(e.c.p.defineLiteralValue(v)))
+					e.c.emitLiteralValue(v)
 				}
 			}
 		} else {
@@ -2654,7 +2716,7 @@ func (e *compiledLogicalAnd) emitGetter(putOnStack bool) {
 	if e.left.constant() {
 		if v, ex := e.c.evalConst(e.left); ex == nil {
 			if !v.ToBoolean() {
-				e.c.emit(loadVal(e.c.p.defineLiteralValue(v)))
+				e.c.emitLiteralValue(v)
 			} else {
 				e.c.emitExpr(e.right, putOnStack)
 			}
@@ -3168,6 +3230,8 @@ func (c *compiler) compileNumberLiteral(v *ast.NumberLiteral) compiledExpr {
 		val = intToValue(num)
 	case float64:
 		val = floatToValue(num)
+	case *big.Int:
+		val = (*valueBigInt)(num)
 	default:
 		c.assert(false, int(v.Idx)-1, "Unsupported number literal type: %T", v.Value)
 		panic("unreachable")
@@ -3516,5 +3580,34 @@ func (e *compiledOptional) emitGetter(putOnStack bool) {
 	if putOnStack {
 		e.c.block.breaks = append(e.c.block.breaks, len(e.c.p.code))
 		e.c.emit(nil)
+	}
+}
+
+func (e *compiledAwaitExpression) emitGetter(putOnStack bool) {
+	e.arg.emitGetter(true)
+	e.c.emit(await)
+	if !putOnStack {
+		e.c.emit(pop)
+	}
+}
+
+func (e *compiledYieldExpression) emitGetter(putOnStack bool) {
+	if e.arg != nil {
+		e.arg.emitGetter(true)
+	} else {
+		e.c.emit(loadUndef)
+	}
+	if putOnStack {
+		if e.delegate {
+			e.c.emit(yieldDelegateRes)
+		} else {
+			e.c.emit(yieldRes)
+		}
+	} else {
+		if e.delegate {
+			e.c.emit(yieldDelegate)
+		} else {
+			e.c.emit(yield)
+		}
 	}
 }
